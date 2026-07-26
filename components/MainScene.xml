@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+    <interface>
+        <field id="credits" type="integer" value="100" />
+        <field id="power" type="integer" value="80" />
+        <field id="heat" type="integer" value="25" />
+        <field id="throughput" type="integer" value="40" />
+        <field id="nodesUnlocked" type="integer" value="1" />
+        <field id="activeTab" type="integer" value="0" />
+        <field id="rules" type="array" />
+        <field id="logEntries" type="array" />
+        <field id="upgradeLevel" type="integer" value="0" />
+        <field id="networkHealth" type="integer" value="100" />
+    </interface>
+    <children>
+        <!-- Background -->
+        <Rectangle id="bg" width="1280" height="720" color="#0A0F0A" />
+        
+        <!-- Scanline overlay for CRT effect -->
+        <Rectangle id="scanlines" width="1280" height="720" color="#00000020" />
+        
+        <!-- Header -->
+        <Label id="header" text="RELAY-0 // NETWORK MANAGEMENT TERMINAL v1.0"
+               translation="[40, 12]" font="font:MediumSystemFont" color="0x00FF41FF" />
+        <Label id="headerSub" text="[System Active]"
+               translation="[1000, 14]" font="font:SmallSystemFont" color="0x00AA30FF" />
+        
+        <!-- Separator line under header -->
+        <Rectangle id="headerLine" translation="[30, 38]" width="1220" height="2" color="0x00FF4180" />
+        
+        <!-- Tab Navigation Bar -->
+        <Rectangle id="tabBarBg" translation="[0, 44]" width="1280" height="44" color="#0D150D" />
+        <Label id="tabMonitor" text="MONITOR"
+               translation="[60, 52]" font="font:MediumBoldSystemFont" color="0xFFFFFF00" />
+        <Label id="tabAuto" text="AUTOMATION"
+               translation="[360, 52]" font="font:MediumBoldSystemFont" color="0x44FF44FF" />
+        <Label id="tabNodes" text="NODES"
+               translation="[720, 52]" font="font:MediumBoldSystemFont" color="0x44FF44FF" />
+        <Label id="tabLogs" text="LOGS"
+               translation="[1000, 52]" font="font:MediumBoldSystemFont" color="0x44FF44FF" />
+        
+        <!-- Tab underline indicators -->
+        <Rectangle id="tabUnderline0" translation="[50, 82]" width="180" height="3" color="0xFFFFFF00" />
+        <Rectangle id="tabUnderline1" translation="[350, 82]" width="220" height="3" color="0x00FF4140" />
+        <Rectangle id="tabUnderline2" translation="[710, 82]" width="160" height="3" color="0x00FF4140" />
+        <Rectangle id="tabUnderline3" translation="[990, 82]" width="120" height="3" color="0x00FF4140" />
+        
+        <!-- Tab Content Container -->
+        <Group id="tabContainer" translation="[0, 90]" />
+        
+        <!-- Footer Separator -->
+        <Rectangle id="footerLine" translation="[30, 648]" width="1220" height="1" color="0x00FF4160" />
+        
+        <!-- Footer -->
+        <Label id="footer" text="Credits: 100 | Power: 80/100 | Heat: 25/100 | Throughput: 40 | Nodes: 1 | Health: 100%"
+               translation="[40, 660]" font="font:SmallSystemFont" color="0x88FF88FF" />
+        
+        <!-- Help hint -->
+        <Label id="helpHint" text="LEFT/RIGHT: Switch Tabs  |  OK: Interact  |  UP/DOWN: Navigate"
+               translation="[40, 688]" font="font:SmallSystemFont" color="0x55AA55FF" />
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+</component>
