@@ -81,11 +81,18 @@ function handleKey(key as string) as boolean
 end function
 
 sub showRuleBuilder()
-    dialog = CreateObject("roSGNode", "Dialog")
-    dialog.title = "NEW AUTOMATION RULE"
-    dialog.optionsDialog = true
-    dialog.message = "Select a CONDITION to trigger the rule:"
-    dialog.buttons = [
+    ' Condition labels shown to the player, paired 1:1 with m.conditionKeys
+    ' below. Cancel is always the last button, so its index is derived
+    ' rather than hardcoded.
+    m.conditionKeys = [
+        "power < 30",
+        "power < 10",
+        "heat > 70",
+        "heat > 85",
+        "throughput < 20",
+        "health < 30"
+    ]
+    buttons = [
         "Power < 30",
         "Power < 10 (Critical)",
         "Heat > 70",
@@ -94,6 +101,11 @@ sub showRuleBuilder()
         "Health < 30",
         "Cancel"
     ]
+    dialog = CreateObject("roSGNode", "Dialog")
+    dialog.title = "NEW AUTOMATION RULE"
+    dialog.optionsDialog = true
+    dialog.message = "Select a CONDITION to trigger the rule:"
+    dialog.buttons = buttons
     dialog.observeField("buttonSelected", "onConditionSelected")
     m.top.getScene().dialog = dialog
 end sub
@@ -103,18 +115,20 @@ sub onConditionSelected(event)
     if dialog = invalid then return
     idx = dialog.buttonSelected
     m.top.getScene().dialog = invalid
-    if idx = 6 or idx = -1 then return
 
-    conditions = [
-        "power < 30",
-        "power < 10",
-        "heat > 70",
-        "heat > 85",
-        "throughput < 20",
-        "health < 30"
+    ' Cancel / dismiss: leave the rule list untouched
+    if m.conditionKeys = invalid then return
+    if idx < 0 or idx > m.conditionKeys.count() - 1 then return
+    selectedCondition = m.conditionKeys[idx]
+
+    m.actionKeys = [
+        "boost_power",
+        "reduce_heat",
+        "earn_credits",
+        "repair_health",
+        "boost_throughput",
+        "emergency_cool"
     ]
-    selectedCondition = conditions[idx]
-
     dialog2 = CreateObject("roSGNode", "Dialog")
     dialog2.title = "SELECT ACTION"
     dialog2.optionsDialog = true
@@ -128,6 +142,8 @@ sub onConditionSelected(event)
         "Emergency Cool (+5 Pow, -30 Heat, -15 Credits, +5 Health)",
         "Cancel"
     ]
+    ' Carry the condition across the dialog transition in component state,
+    ' not as an undeclared field on the Dialog node.
     m.pendingCondition = selectedCondition
     dialog2.observeField("buttonSelected", "onActionSelected")
     m.top.getScene().dialog = dialog2
@@ -140,21 +156,20 @@ sub onActionSelected(event)
     condition = m.pendingCondition
     m.top.getScene().dialog = invalid
     m.pendingCondition = invalid
-    if idx = 6 or idx = -1 or condition = invalid then return
 
-    actions = [
-        "boost_power",
-        "reduce_heat",
-        "earn_credits",
-        "repair_health",
-        "boost_throughput",
-        "emergency_cool"
-    ]
-    selectedAction = actions[idx]
+    ' Cancel / dismiss / lost condition: leave the rule list untouched
+    if condition = invalid then return
+    if m.actionKeys = invalid then return
+    if idx < 0 or idx > m.actionKeys.count() - 1 then return
+    selectedAction = m.actionKeys[idx]
 
     ' Node fields are copy-on-access: read into a local, mutate, assign back.
     currentRules = m.parentScene.rules
     if currentRules = invalid then currentRules = []
+    if currentRules.count() >= 10
+        m.parentScene.callFunc("addLog", "Cannot add rule: maximum 10 rules reached.")
+        return
+    end if
     rule = { condition: condition, action: selectedAction, target: "self" }
     currentRules.push(rule)
     m.parentScene.rules = currentRules
