@@ -55,7 +55,7 @@ sub init()
     m.tune = tuning()
     m.top.setFocus(true)
     m.top.activeTab = 0
-    m.saveVersion = 3
+    m.saveVersion = SAVE_SCHEMA_VERSION()
     m.lastSaveTime = invalid
     m.tabCount = 5
     m.incomeTimer = invalid
@@ -80,89 +80,348 @@ sub init()
     print "=== RELAY-0 ready. Rules: " + m.top.rules.count().toStr() + ", Logs: " + m.top.logEntries.count().toStr() + " ==="
 end sub
 
+' ============================================================
+' Save schema (registry section "relay0")
+' ============================================================
+' Key              Format                          Notes
+' ---------------  ------------------------------  ----------------------
+' saveVersion      integer as string               current: SAVE_SCHEMA_VERSION
+' saveData         "k=v,k=v,..." scalar pairs      credits, power, heat,
+'                                                  throughput, nodes,
+'                                                  lastTime, upgrade,
+'                                                  health, remainder
+' rules            JSON array of objects           {condition, action, target}
+' logs             JSON array of strings           newest first, max 100
+' upgradeCounts    JSON object of string->integer  purchase counts per key
+'
+' Migration policy
+' ----------------
+'   * Every load runs through sanitise + migrate before values reach
+'     m.top, so a malformed or hostile registry can never enter live state.
+'   * Migrations are keyed on the stored saveVersion, applied in ascending
+'     order, and are IDEMPOTENT: re-running a migration on already-migrated
+'     data is a no-op.
+'   * Unknown//future saveVersion values are treated as current rather than
+'     discarded, so a downgrade does not wipe a player's progress.
+'   * Any single field that fails validation falls back to its documented
+'     default; the rest of the save still loads. A wholly unreadable save
+'     falls back to a complete known-good default state.
+' ============================================================
+
+function SAVE_SCHEMA_VERSION() as integer
+    return 4
+end function
+
+' Documented defaults, also the recovery state for an unreadable save.
+function defaultSaveState() as object
+    return {
+        credits: 100
+        power: 80
+        heat: 25
+        throughput: 40
+        nodes: 1
+        upgrade: 0
+        health: 100
+        remainder: 0.0
+        lastTime: invalid
+    }
+end function
+
+' Coerce to an integer within [lo, hi]. Returns fallback when the value is
+' missing, non-numeric, or otherwise unusable.
+function safeInt(raw as dynamic, lo as integer, hi as integer, fallback as integer) as integer
+    if raw = invalid then return fallback
+
+    t = type(raw)
+    if isStr(raw)
+        s = raw.trim()
+        if s = "" then return fallback
+        ' Reject anything that is not an optional sign followed by digits.
+        if not isNumericString(s) then return fallback
+        v = s.toInt()
+    else if t = "roInt" or t = "Integer" or t = "roFloat" or t = "Float" or t = "Double" or t = "roDouble" or t = "LongInteger"
+        v = Int(raw)
+    else
+        return fallback
+    end if
+
+    if v < lo then return lo
+    if v > hi then return hi
+    return v
+end function
+
+' Coerce to a float within [lo, hi). Used for the credit remainder.
+' The upper bound is EXCLUSIVE: an out-of-range value wraps to lo rather
+' than clamping to hi, since hi itself is not a legal value.
+function safeFloat(raw as dynamic, lo as float, hi as float, fallback as float) as float
+    if raw = invalid then return fallback
+    t = type(raw)
+    if isStr(raw)
+        s = raw.trim()
+        if s = "" then return fallback
+        v = s.toFloat()
+        ' toFloat() yields 0 for garbage; only trust it if it looks numeric.
+        if v = 0.0 and not isFloatString(s) then return fallback
+    else if t = "roFloat" or t = "Float" or t = "Double" or t = "roDouble" or t = "roInt" or t = "Integer"
+        v = raw
+    else
+        return fallback
+    end if
+    if v < lo then return lo
+    if v >= hi then return lo
+    return v
+end function
+
+' BrightScript reports strings as either "String" (intrinsic) or "roString"
+' (boxed) depending on origin. roRegistrySection.Read() returns the former,
+' parseJson() members the latter, so every string check must accept both.
+function isStr(v as dynamic) as boolean
+    if v = invalid then return false
+    t = type(v)
+    return (t = "String" or t = "roString")
+end function
+
+' Explicit key lookup for a dynamically-populated assoc array. Returns
+' invalid when the key is absent, so callers can distinguish "missing"
+' from "present but empty".
+function mapGet(m_ as object, key as string) as dynamic
+    if m_ = invalid then return invalid
+    if not m_.doesExist(key) then return invalid
+    return m_[key]
+end function
+
+function isNumericString(s as string) as boolean
+    if s = "" then return false
+    start = 0
+    if s.mid(0, 1) = "-" or s.mid(0, 1) = "+"
+        if s.len() = 1 then return false
+        start = 1
+    end if
+    for i = start to s.len() - 1
+        c = s.mid(i, 1)
+        if c < "0" or c > "9" then return false
+    end for
+    return true
+end function
+
+function isFloatString(s as string) as boolean
+    if s = "" then return false
+    seenDot = false
+    seenDigit = false
+    start = 0
+    if s.mid(0, 1) = "-" or s.mid(0, 1) = "+"
+        if s.len() = 1 then return false
+        start = 1
+    end if
+    for i = start to s.len() - 1
+        c = s.mid(i, 1)
+        if c = "."
+            if seenDot then return false
+            seenDot = true
+        else if c >= "0" and c <= "9"
+            seenDigit = true
+        else
+            return false
+        end if
+    end for
+    return seenDigit
+end function
+
 ' ----- Save / Load (Cached Registry, Debounced) -----
 sub loadGame()
     reg = m.saveReg
+    defaults = defaultSaveState()
 
-    ' Read save version
-    saveVer = 1
+    ' ---- Read the stored schema version ----
+    ' A missing version means a pre-versioning save (treated as v1). A
+    ' garbage version is treated as v1 so migrations get a chance to run.
+    storedVer = 1
     if reg.Exists("saveVersion")
-        v = reg.Read("saveVersion")
-        if v <> invalid then saveVer = v.toInt()
+        storedVer = safeInt(reg.Read("saveVersion"), 1, 9999, 1)
     end if
-    m.saveVersion = saveVer
 
+    ' ---- Parse scalar pairs into a plain map first ----
+    ' Nothing touches m.top until every value has been validated.
+    raw = {}
     if reg.Exists("saveData")
         data = reg.Read("saveData")
-        if data <> invalid and data <> ""
-            parts = data.split(",")
-            for each p in parts
+        if isStr(data) and data <> ""
+            for each p in data.split(",")
                 kv = p.split("=")
                 if kv.count() = 2
                     key = kv[0].trim()
-                    val = kv[1].trim().toInt()
-                    if key = "credits" then m.top.credits = val
-                    if key = "power" then m.top.power = val
-                    if key = "heat" then m.top.heat = val
-                    if key = "throughput" then m.top.throughput = val
-                    if key = "nodes" then m.top.nodesUnlocked = max(1, val)
-                    if key = "lastTime" then m.lastSaveTime = val
-                    if key = "upgrade" then m.top.upgradeLevel = val
-                    if key = "health" then m.top.networkHealth = max(0, val)
-                    if key = "remainder" then m.creditRemainder = kv[1].trim().toFloat()
+                    if key <> "" then raw[key] = kv[1].trim()
                 end if
             end for
         end if
     end if
 
-    if m.lastSaveTime = invalid then m.lastSaveTime = getCurrentEpoch()
+    ' ---- Validate and clamp every scalar ----
+    ' Use explicit lookup helpers: dot access on a dynamically-populated
+    ' roAssociativeArray does not reliably resolve keys inserted via raw[key].
+    credits = safeInt(mapGet(raw, "credits"), 0, 2000000000, defaults.credits)
+    power = safeInt(mapGet(raw, "power"), 0, 100, defaults.power)
+    heat = safeInt(mapGet(raw, "heat"), 0, 100, defaults.heat)
+    throughput = safeInt(mapGet(raw, "throughput"), 0, 100, defaults.throughput)
+    nodes = safeInt(mapGet(raw, "nodes"), 1, 5, defaults.nodes)
+    upgrade = safeInt(mapGet(raw, "upgrade"), 0, 999, defaults.upgrade)
+    health = safeInt(mapGet(raw, "health"), 0, 100, defaults.health)
+    remainder = safeFloat(mapGet(raw, "remainder"), 0.0, 1.0, defaults.remainder)
 
-    ' Load automation rules
-    if reg.Exists("rules")
-        rulesJson = reg.Read("rules")
-        if rulesJson <> invalid and rulesJson <> ""
-            parsed = parseJson(rulesJson)
-            if parsed <> invalid then m.top.rules = parsed
-            m.lastRulesJson = rulesJson
-        end if
-    end if
-    if m.top.rules = invalid then m.top.rules = []
-
-    ' Load logs
-    if reg.Exists("logs")
-        logsJson = reg.Read("logs")
-        if logsJson <> invalid and logsJson <> ""
-            parsed = parseJson(logsJson)
-            if parsed <> invalid then m.top.logEntries = parsed
-            m.lastLogsJson = logsJson
-        end if
-    end if
-    if m.top.logEntries = invalid then m.top.logEntries = []
-
-    ' Load upgrade purchase counts
-    if reg.Exists("upgradeCounts")
-        ucJson = reg.Read("upgradeCounts")
-        if ucJson <> invalid and ucJson <> ""
-            parsed = parseJson(ucJson)
-            if parsed <> invalid then m.top.upgradeCounts = parsed
-            m.lastUpgradeCountsJson = ucJson
-        end if
-    end if
-    if m.top.upgradeCounts = invalid then m.top.upgradeCounts = {}
-
-    ' Save migration: builds before v3 could leave a save wedged at
-    ' power=0 / heat=100 with no recovery path. Rescue those states once.
-    if saveVer < 3
-        if m.top.power < 30 then m.top.power = 60
-        if m.top.heat > 70 then m.top.heat = 30
-        if m.top.throughput < 30 then m.top.throughput = 45
-        if m.top.networkHealth < 50 then m.top.networkHealth = 80
-        m.saveVersion = 3
-        print "[loadGame] migrated save to v3 (rebalanced economy)"
+    ' lastTime: 0 or absent means "unknown", handled after migration.
+    lastTime = invalid
+    ltRaw = mapGet(raw, "lastTime")
+    if ltRaw <> invalid
+        lt = safeInt(ltRaw, 0, 2147483647, 0)
+        if lt > 0 then lastTime = lt
     end if
 
-    print "[loadGame] credits=" + m.top.credits.toStr() + " power=" + m.top.power.toStr() + " heat=" + m.top.heat.toStr()
+    ' ---- Load and validate collections ----
+    rules = loadRules(reg)
+    logEntries = loadLogs(reg)
+    upgradeCounts = loadUpgradeCounts(reg)
+
+    ' ---- Build a candidate state, migrate it, then commit ----
+    state = {
+        credits: credits
+        power: power
+        heat: heat
+        throughput: throughput
+        nodes: nodes
+        upgrade: upgrade
+        health: health
+        remainder: remainder
+        lastTime: lastTime
+    }
+    migrateSave(state, storedVer)
+
+    m.top.credits = state.credits
+    m.top.power = state.power
+    m.top.heat = state.heat
+    m.top.throughput = state.throughput
+    m.top.nodesUnlocked = state.nodes
+    m.top.upgradeLevel = state.upgrade
+    m.top.networkHealth = state.health
+    m.top.rules = rules
+    m.top.logEntries = logEntries
+    m.top.upgradeCounts = upgradeCounts
+    m.creditRemainder = state.remainder
+
+    if state.lastTime = invalid
+        m.lastSaveTime = getCurrentEpoch()
+    else
+        m.lastSaveTime = state.lastTime
+    end if
+
+    ' Always store forward at the current schema version.
+    m.saveVersion = SAVE_SCHEMA_VERSION()
+
+    print "[loadGame] v" + storedVer.toStr() + "->v" + m.saveVersion.toStr() + " credits=" + state.credits.toStr() + " power=" + state.power.toStr() + " heat=" + state.heat.toStr()
 end sub
+
+' Apply migrations in ascending order. Each step must be idempotent.
+sub migrateSave(state as object, fromVer as integer)
+    if fromVer >= SAVE_SCHEMA_VERSION() then return
+
+    ' v1/v2 -> v3: early builds drained power to 0 and pinned heat at 100
+    ' with no recovery path. Rescue a wedged economy exactly once.
+    if fromVer < 3
+        if state.power < 30 then state.power = 60
+        if state.heat > 70 then state.heat = 30
+        if state.throughput < 30 then state.throughput = 45
+        if state.health < 50 then state.health = 80
+        print "[migrate] v" + fromVer.toStr() + " -> v3 (rebalanced economy)"
+    end if
+
+    ' v3 -> v4: the credit remainder was introduced. Absent means 0, which
+    ' safeFloat() already supplied, so this step only records the bump.
+    if fromVer < 4
+        print "[migrate] v" + fromVer.toStr() + " -> v4 (idle remainder tracking)"
+    end if
+end sub
+
+' Rules must be an array of {condition, action, target} with string members.
+' Anything else is dropped rather than allowed to crash the Automation tab.
+function loadRules(reg as object) as object
+    if not reg.Exists("rules") then return []
+    json = reg.Read("rules")
+    if not isStr(json) or json = "" then return []
+
+    parsed = parseJson(json)
+    if parsed = invalid then
+        print "[loadGame] rules JSON unparseable; starting with none"
+        return []
+    end if
+    if type(parsed) <> "roArray"
+        print "[loadGame] rules was not an array; starting with none"
+        return []
+    end if
+
+    clean = []
+    dropped = 0
+    for each r in parsed
+        if type(r) = "roAssociativeArray" and r.doesExist("condition") and r.doesExist("action")
+            cond = r.condition
+            act = r.action
+            if isStr(cond) and isStr(act) and cond <> "" and act <> ""
+                target = "self"
+                if r.doesExist("target") and isStr(r.target) and r.target <> "" then target = r.target
+                clean.push({ condition: cond, action: act, target: target })
+            else
+                dropped = dropped + 1
+            end if
+        else
+            dropped = dropped + 1
+        end if
+        if clean.count() >= 10 then exit for
+    end for
+    if dropped > 0 then print "[loadGame] dropped " + dropped.toStr() + " malformed rule(s)"
+    return clean
+end function
+
+' Logs must be an array of non-empty strings, newest first, capped at 100.
+function loadLogs(reg as object) as object
+    if not reg.Exists("logs") then return []
+    json = reg.Read("logs")
+    if not isStr(json) or json = "" then return []
+
+    parsed = parseJson(json)
+    if parsed = invalid or type(parsed) <> "roArray"
+        print "[loadGame] logs unreadable; starting empty"
+        return []
+    end if
+
+    clean = []
+    for each entry in parsed
+        if isStr(entry) and entry <> ""
+            clean.push(entry)
+        else if type(entry) = "roInt" or type(entry) = "Integer"
+            clean.push(entry.toStr())
+        end if
+        if clean.count() >= 100 then exit for
+    end for
+    return clean
+end function
+
+' Upgrade counts must map known upgrade keys to non-negative integers.
+function loadUpgradeCounts(reg as object) as object
+    if not reg.Exists("upgradeCounts") then return {}
+    json = reg.Read("upgradeCounts")
+    if not isStr(json) or json = "" then return {}
+
+    parsed = parseJson(json)
+    if parsed = invalid or type(parsed) <> "roAssociativeArray"
+        print "[loadGame] upgradeCounts unreadable; starting empty"
+        return {}
+    end if
+
+    clean = {}
+    for each key in parsed
+        v = safeInt(parsed[key], 0, 999, -1)
+        if v >= 0 then clean[key] = v
+    end for
+    return clean
+end function
 
 sub saveGame()
     ' Build save data string using local vars (avoid repeated m.top access)
