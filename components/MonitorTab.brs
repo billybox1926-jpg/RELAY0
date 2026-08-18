@@ -11,7 +11,7 @@ sub setParentScene(parent)
     m.parentScene = parent
 end sub
 
-sub updateUI()
+sub updateUI(dummy = invalid as dynamic)
     if m.parentScene = invalid then return
 
     power = m.parentScene.power
@@ -90,7 +90,7 @@ sub updateUI()
 
     ' --- Upgrade & Nodes ---
     m.top.findNode("upgradeLabel").text = "Upgrade Level: " + upgradeLevel.toStr() + " (mult x" + formatFloat(upgradeMult, 2) + ")"
-    m.top.findNode("nodesLabel").text = "Active Nodes: " + nodesCount.toStr() + " / 3"
+    m.top.findNode("nodesLabel").text = "Active Nodes: " + nodesCount.toStr() + " / 5"
 
     ' --- Warnings ---
     warnings = ""
@@ -123,7 +123,7 @@ sub updateUI()
     m.top.findNode("statsText").text = "Active Rules: " + ruleCount.toStr() + chr(10) + "Log Entries: " + logCount.toStr()
 end sub
 
-function onEvent()
+function onEvent(dummy = invalid as dynamic)
     updateUI()
     return invalid
 end function

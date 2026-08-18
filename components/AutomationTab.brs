@@ -12,7 +12,7 @@ sub setParentScene(parent)
     m.parentScene = parent
 end sub
 
-sub updateRuleList()
+sub updateRuleList(dummy = invalid as dynamic)
     if m.parentScene = invalid or m.parentScene.rules = invalid then
         m.top.findNode("ruleList").text = "No rules installed."
         return
@@ -61,8 +61,8 @@ function handleKey(key as string) as boolean
             maxIdx = rules.count() - 1
             if maxIdx < 0 then maxIdx = 0
             if m.selectedIndex > maxIdx then m.selectedIndex = maxIdx
-            m.parentScene.flushSave()
-            m.parentScene.addLog("Rule deleted: " + deletedCondition)
+            m.parentScene.callFunc("flushSave", invalid)
+            m.parentScene.callFunc("addLog", "Rule deleted: " + deletedCondition)
             updateRuleList()
         end if
         return true
@@ -70,7 +70,7 @@ function handleKey(key as string) as boolean
 
     if key = "OK"
         if rules.count() >= 10
-            m.parentScene.addLog("Cannot add rule: maximum 10 rules reached.")
+            m.parentScene.callFunc("addLog", "Cannot add rule: maximum 10 rules reached.")
             return true
         end if
         showRuleBuilder()
@@ -158,12 +158,12 @@ sub onActionSelected(event)
     rule = { condition: condition, action: selectedAction, target: "self" }
     currentRules.push(rule)
     m.parentScene.rules = currentRules
-    m.parentScene.flushSave()
-    m.parentScene.addLog("New rule: " + condition + " -> " + selectedAction)
+    m.parentScene.callFunc("flushSave", invalid)
+    m.parentScene.callFunc("addLog", "New rule: " + condition + " -> " + selectedAction)
     updateRuleList()
 end sub
 
-function onEvent()
+function onEvent(dummy = invalid as dynamic)
     updateRuleList()
     return invalid
 end function

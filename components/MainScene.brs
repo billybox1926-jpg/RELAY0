@@ -19,13 +19,14 @@ sub init()
     m.top.activeTab = 0
     m.saveVersion = 2
     m.lastSaveTime = invalid
-    m.tabCount = 4
+    m.tabCount = 5
     m.incomeTimer = invalid
     m.saveTimer = invalid
     m.saveDirty = false
     m.saveReg = CreateObject("roRegistrySection", "relay0")
     m.lastRulesJson = ""
     m.lastLogsJson = ""
+    m.lastUpgradeCountsJson = ""
 
     print "=== RELAY-0 v1.1 booting ==="
 
@@ -97,6 +98,17 @@ sub loadGame()
     end if
     if m.top.logEntries = invalid then m.top.logEntries = []
 
+    ' Load upgrade purchase counts
+    if reg.Exists("upgradeCounts")
+        ucJson = reg.Read("upgradeCounts")
+        if ucJson <> invalid and ucJson <> ""
+            parsed = parseJson(ucJson)
+            if parsed <> invalid then m.top.upgradeCounts = parsed
+            m.lastUpgradeCountsJson = ucJson
+        end if
+    end if
+    if m.top.upgradeCounts = invalid then m.top.upgradeCounts = {}
+
     print "[loadGame] credits=" + m.top.credits.toStr() + " power=" + m.top.power.toStr() + " heat=" + m.top.heat.toStr()
 end sub
 
@@ -152,6 +164,16 @@ sub saveGame()
         end if
     end if
 
+    ' Persist upgrade purchase counts
+    upgradeCounts = m.top.upgradeCounts
+    if upgradeCounts <> invalid
+        ucJson = FormatJson(upgradeCounts)
+        if ucJson <> m.lastUpgradeCountsJson
+            reg.Write("upgradeCounts", ucJson)
+            m.lastUpgradeCountsJson = ucJson
+        end if
+    end if
+
     reg.Flush()
 end sub
 
@@ -177,7 +199,7 @@ sub onSaveTimer()
     end if
 end sub
 
-sub flushSave()
+sub flushSave(dummy = invalid as dynamic)
     ' Immediate unconditional save. Callers (tabs, init/shutdown) mutate
     ' m.top fields or rules/logs directly without going through markDirty(),
     ' so this must not be gated on m.saveDirty or those writes are lost.
@@ -256,6 +278,7 @@ sub createTabs()
         CreateObject("roSGNode", "MonitorTab"),
         CreateObject("roSGNode", "AutomationTab"),
         CreateObject("roSGNode", "NodesTab"),
+        CreateObject("roSGNode", "UpgradesTab"),
         CreateObject("roSGNode", "LogsTab")
     ]
     for each tabNode in m.tabs
@@ -273,17 +296,25 @@ end sub
 sub showCurrentTab()
     tabIdx = m.top.activeTab
     if tabIdx < 0 or tabIdx >= m.tabCount then tabIdx = 0
+    if m.tabs = invalid then return
+
     for i = 0 to m.tabs.count() - 1
         m.tabs[i].visible = (i = tabIdx)
     end for
     updateTabHighlight()
 
+    ' Keep the footer ticker in sync whenever the view changes
+    updateFooter()
+
     current = m.tabs[tabIdx]
-    if current <> invalid
-        if tabIdx = 0 then current.callFunc("updateUI")
-        if tabIdx = 3 then current.callFunc("refresh")
-        if tabIdx = 2 then current.callFunc("updateUI")
-    end if
+    if current = invalid then return
+
+    ' Refresh the newly shown tab's contents
+    if tabIdx = 0 then current.callFunc("updateUI", invalid)
+    if tabIdx = 1 then current.callFunc("onEvent", invalid)
+    if tabIdx = 2 then current.callFunc("updateUI", invalid)
+    if tabIdx = 3 then current.callFunc("updateUI", invalid)
+    if tabIdx = 4 then current.callFunc("refresh", invalid)
 end sub
 
 sub updateTabHighlight()
@@ -293,13 +324,15 @@ sub updateTabHighlight()
             m.top.findNode("tabMonitor"),
             m.top.findNode("tabAuto"),
             m.top.findNode("tabNodes"),
+            m.top.findNode("tabUpgrades"),
             m.top.findNode("tabLogs")
         ]
         m.tabUnderlines = [
             m.top.findNode("tabUnderline0"),
             m.top.findNode("tabUnderline1"),
             m.top.findNode("tabUnderline2"),
-            m.top.findNode("tabUnderline3")
+            m.top.findNode("tabUnderline3"),
+            m.top.findNode("tabUnderline4")
         ]
     end if
 
@@ -307,15 +340,15 @@ sub updateTabHighlight()
     dimUnder = &h00FF4140
     activeColor = &hFFFFFFFF
 
-    for i = 0 to 3
-        m.tabLabels[i].color = dimColor
-        m.tabUnderlines[i].color = dimUnder
+    for i = 0 to m.tabLabels.count() - 1
+        if m.tabLabels[i] <> invalid then m.tabLabels[i].color = dimColor
+        if m.tabUnderlines[i] <> invalid then m.tabUnderlines[i].color = dimUnder
     end for
 
     tabIdx = m.top.activeTab
-    if tabIdx >= 0 and tabIdx < 4
-        m.tabLabels[tabIdx].color = activeColor
-        m.tabUnderlines[tabIdx].color = activeColor
+    if tabIdx >= 0 and tabIdx < m.tabLabels.count()
+        if m.tabLabels[tabIdx] <> invalid then m.tabLabels[tabIdx].color = activeColor
+        if m.tabUnderlines[tabIdx] <> invalid then m.tabUnderlines[tabIdx].color = activeColor
     end if
 end sub
 
@@ -329,9 +362,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
         return true
     end if
     tabIdx = m.top.activeTab
+    if m.tabs = invalid then return false
     if tabIdx >= 0 and tabIdx < m.tabs.count()
         current = m.tabs[tabIdx]
-        if current <> invalid and current.callFunc("handleKey", key) = true then return true
+        if current <> invalid
+            handled = current.callFunc("handleKey", key)
+            if handled = true then return true
+        end if
     end if
     return false
 end function
@@ -363,9 +400,9 @@ sub addLog(msg as string)
     m.top.logEntries = entries
 
     ' Refresh logs tab if visible
-    if m.top.activeTab = 3 and m.tabs.count() > 3
-        logsTab = m.tabs[3]
-        if logsTab <> invalid then logsTab.callFunc("refresh")
+    if m.top.activeTab = 4 and m.tabs <> invalid and m.tabs.count() > 4
+        logsTab = m.tabs[4]
+        if logsTab <> invalid then logsTab.callFunc("refresh", invalid)
     end if
 
     ' Debounced save (don't flush immediately)
@@ -480,9 +517,11 @@ sub onEventTimer()
     processRules()
     if rnd(100) <= 35 then triggerRandomEvent()
     ' Notify visible tabs
+    if m.tabs = invalid then return
     for each tabNode in m.tabs
-        if tabNode.visible then tabNode.callFunc("onEvent")
+        if tabNode.visible then tabNode.callFunc("onEvent", invalid)
     end for
+    updateFooter()
 end sub
 
 ' ----- Income Timer (every 15s) -----
@@ -507,19 +546,58 @@ sub onIncomeTick()
     throughputMult = throughput / 50.0
     upgradeMult = 1.0 + (upgradeLevel * 0.25)
     earned = Cint(5 * throughputMult * upgradeMult)
-    if earned < 1 then earned = 1
+    if earned < 3 then earned = 3
 
     heatGain = Cint(2 + (throughput / 25.0))
     powerLoss = Cint(2 + nodesUnlocked)
+
+    ' Apply passive upgrade effects: cooling reduces heat gain,
+    ' reactor shielding reduces power drain, battery adds regen.
+    counts = m.top.upgradeCounts
+    if counts <> invalid
+        if counts.doesExist("cooling")
+            heatGain = heatGain - counts["cooling"]
+            if heatGain < 0 then heatGain = 0
+        end if
+        if counts.doesExist("reactor")
+            powerLoss = powerLoss - counts["reactor"]
+            if powerLoss < 0 then powerLoss = 0
+        end if
+        if counts.doesExist("battery")
+            powerLoss = powerLoss - counts["battery"]
+        end if
+    end if
 
     healthDelta = 0
     if heat > 85 then healthDelta = -3
     if power < 10 then healthDelta = healthDelta - 2
 
+    ' Recovery floor: a fully drained/overheated relay slowly self-recovers
+    ' so the game can never become permanently unplayable.
+    if power <= 0
+        powerLoss = -8
+        heatGain = -6
+    end if
+    if heat >= 100 then heatGain = -10
+
     applyResourceChanges(-powerLoss, heatGain, 0, earned, healthDelta)
 
-    if m.top.activeTab = 0 and m.tabs.count() > 0
-        m.tabs[0].callFunc("updateUI")
+    ' Refresh whichever tab is currently visible so live values update
+    refreshActiveTab()
+end sub
+
+' Refresh the currently visible tab plus the footer ticker
+sub refreshActiveTab()
+    updateFooter()
+    if m.tabs = invalid then return
+    tabIdx = m.top.activeTab
+    if tabIdx < 0 or tabIdx >= m.tabs.count() then return
+    current = m.tabs[tabIdx]
+    if current = invalid then return
+    if tabIdx = 4
+        current.callFunc("refresh", invalid)
+    else
+        current.callFunc("onEvent", invalid)
     end if
 end sub
 

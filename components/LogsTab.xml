@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="LogsTab" extends="Group">
+    <interface>
+        <function name="setParentScene" />
+        <function name="refresh" />
+        <function name="handleKey" />
+        <function name="onEvent" />
+    </interface>
     <children>
         <!-- Section Title -->
         <Label id="title" text="[ SYSTEM LOGS ]"

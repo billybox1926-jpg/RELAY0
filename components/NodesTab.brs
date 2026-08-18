@@ -16,7 +16,7 @@ sub setParentScene(parent)
     m.parentScene = parent
 end sub
 
-sub updateUI()
+sub updateUI(dummy = invalid as dynamic)
     if m.parentScene = invalid then return
     nodeCount = m.parentScene.nodesUnlocked
     if nodeCount < 1 then nodeCount = 1
@@ -162,8 +162,8 @@ sub onActionChosen(event)
                 m.parentScene.credits = m.parentScene.credits - 30
                 m.parentScene.throughput = clamp(m.parentScene.throughput + 10, 0, 100)
                 m.parentScene.heat = clamp(m.parentScene.heat + 15, 0, 100)
-                m.parentScene.flushSave()
-                m.parentScene.addLog("Node " + m.selectedNode.toStr() + " overclocked. Throughput +10, Heat +15.")
+                m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("addLog", "Node " + m.selectedNode.toStr() + " overclocked. Throughput +10, Heat +15.")
                 setStatus("Overclock applied successfully.")
             else
                 setStatus("Insufficient credits. Need 30.")
@@ -174,8 +174,8 @@ sub onActionChosen(event)
             if m.parentScene.credits >= 20
                 m.parentScene.credits = m.parentScene.credits - 20
                 m.parentScene.heat = 30
-                m.parentScene.flushSave()
-                m.parentScene.addLog("Node " + m.selectedNode.toStr() + " repaired. Heat reset to 30.")
+                m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("addLog", "Node " + m.selectedNode.toStr() + " repaired. Heat reset to 30.")
                 setStatus("Repair complete. Heat normalized.")
             else
                 setStatus("Insufficient credits. Need 20.")
@@ -195,8 +195,8 @@ sub onActionChosen(event)
             else if m.parentScene.credits >= 500
                 m.parentScene.credits = m.parentScene.credits - 500
                 m.parentScene.nodesUnlocked = m.parentScene.nodesUnlocked + 1
-                m.parentScene.flushSave()
-                m.parentScene.addLog("New relay node unlocked! Total: " + m.parentScene.nodesUnlocked.toStr() + "/5")
+                m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("addLog", "New relay node unlocked! Total: " + m.parentScene.nodesUnlocked.toStr() + "/5")
                 setStatus("Expansion successful. Node " + (m.parentScene.nodesUnlocked - 1).toStr() + " is online.")
             else
                 setStatus("Insufficient credits. Need 500.")
@@ -207,9 +207,9 @@ sub onActionChosen(event)
             if m.parentScene.credits >= 200
                 m.parentScene.credits = m.parentScene.credits - 200
                 m.parentScene.upgradeLevel = m.parentScene.upgradeLevel + 1
-                m.parentScene.flushSave()
+                m.parentScene.callFunc("flushSave", invalid)
                 newMult = 1.0 + (m.parentScene.upgradeLevel * 0.25)
-                m.parentScene.addLog("System upgraded to level " + m.parentScene.upgradeLevel.toStr() + ". Income mult: x" + formatFloat(newMult, 2))
+                m.parentScene.callFunc("addLog", "System upgraded to level " + m.parentScene.upgradeLevel.toStr() + ". Income mult: x" + formatFloat(newMult, 2))
                 setStatus("Upgrade complete. Now level " + m.parentScene.upgradeLevel.toStr() + ".")
             else
                 setStatus("Insufficient credits. Need 200.")
@@ -224,8 +224,8 @@ sub onActionChosen(event)
         if m.parentScene.credits >= 150
             m.parentScene.credits = m.parentScene.credits - 150
             m.parentScene.networkHealth = clamp(m.parentScene.networkHealth + 30, 0, 100)
-            m.parentScene.flushSave()
-            m.parentScene.addLog("Network health restored. +30% (now " + m.parentScene.networkHealth.toStr() + "%)")
+            m.parentScene.callFunc("flushSave", invalid)
+            m.parentScene.callFunc("addLog", "Network health restored. +30% (now " + m.parentScene.networkHealth.toStr() + "%)")
             setStatus("Health restored. Network integrity improving.")
         else
             setStatus("Insufficient credits. Need 150.")
@@ -237,7 +237,7 @@ sub setStatus(msg as string)
     m.top.findNode("statusText").text = msg
 end sub
 
-function onEvent()
+function onEvent(dummy = invalid as dynamic)
     updateUI()
     return invalid
 end function

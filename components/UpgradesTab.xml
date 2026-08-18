@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="UpgradesTab" extends="Group">
+    <interface>
+        <function name="setParentScene" />
+        <function name="updateUI" />
+        <function name="handleKey" />
+        <function name="onEvent" />
+    </interface>
+    <children>
+        <!-- Section Title -->
+        <Label id="title" text="[ UPGRADE STORE ]"
+               translation="[60, 20]" font="font:MediumBoldSystemFont" color="0x00FF41FF" />
+        <Rectangle translation="[60, 44]" width="1160" height="1" color="0x00FF4140" />
+
+        <!-- Credits readout -->
+        <Label id="creditsLine" text="Credits: 0"
+               translation="[900, 20]" font="font:MediumBoldSystemFont" color="0x00FF41FF" />
+
+        <!-- Instructions -->
+        <Label id="instructions" text="UP/DOWN: Select Upgrade  |  OK: Purchase"
+               translation="[60, 58]" font="font:SmallSystemFont" color="#88CC88FF" />
+
+        <!-- Upgrade list -->
+        <Label id="upgradeList" text="Loading..."
+               translation="[60, 92]" font="font:SmallSystemFont" color="#CCFFCCFF"
+               wrap="true" width="1160" height="390" />
+
+        <!-- Detail panel -->
+        <Rectangle translation="[60, 492]" width="1160" height="1" color="0x00FF4120" />
+        <Label id="detailTitle" text="[ DETAILS ]"
+               translation="[60, 505]" font="font:MediumSystemFont" color="#00FF41FF" />
+        <Label id="detailText" text=""
+               translation="[60, 535]" font="font:SmallSystemFont" color="#AACCAAFF"
+               wrap="true" width="1160" height="60" />
+
+        <!-- Status message -->
+        <Label id="statusText" text="Select an upgrade and press OK to purchase."
+               translation="[60, 600]" font="font:SmallSystemFont" color="#00FF41FF"
+               wrap="true" width="1160" height="40" />
+    </children>
+    <script type="text/brightscript" uri="pkg:/components/UpgradesTab.brs" />
+</component>

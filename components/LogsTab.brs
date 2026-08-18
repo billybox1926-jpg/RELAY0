@@ -13,7 +13,7 @@ sub setParentScene(parent)
     m.parentScene = parent
 end sub
 
-sub refresh()
+sub refresh(dummy = invalid as dynamic)
     if m.parentScene = invalid or m.parentScene.logEntries = invalid then return
     entries = m.parentScene.logEntries
     if entries.count() = 0
@@ -53,7 +53,7 @@ sub refresh()
     end if
 end sub
 
-function onEvent()
+function onEvent(dummy = invalid as dynamic)
     refresh()
     return invalid
 end function
@@ -90,8 +90,8 @@ sub onClearConfirm(event)
 
     if idx = 0
         m.parentScene.logEntries = []
-        m.parentScene.flushSave()
-        m.parentScene.addLog("Logs cleared by operator.")
+        m.parentScene.callFunc("flushSave", invalid)
+        m.parentScene.callFunc("addLog", "Logs cleared by operator.")
         refresh()
     end if
 end sub
