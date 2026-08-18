@@ -194,6 +194,7 @@ sub purchaseSelected()
     applyEffect(item.key)
 
     m.parentScene.callFunc("flushSave", invalid)
+    m.parentScene.callFunc("refreshActiveTab", invalid)
     m.parentScene.callFunc("addLog", "Purchased " + item.name + " Lv " + (lvl + 1).toStr() + " for " + cost.toStr() + " cr.")
     setStatus("Purchased " + item.name + " Lv " + (lvl + 1).toStr() + "!")
     updateUI()

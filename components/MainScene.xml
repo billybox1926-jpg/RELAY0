@@ -15,6 +15,7 @@
         <function name="flushSave" />
         <function name="addLog" />
         <function name="applyResourceChanges" />
+        <function name="refreshActiveTab" />
     </interface>
     <children>
         <!-- Background -->

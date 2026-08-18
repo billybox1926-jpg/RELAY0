@@ -163,6 +163,7 @@ sub onActionChosen(event)
                 m.parentScene.throughput = clamp(m.parentScene.throughput + 10, 0, 100)
                 m.parentScene.heat = clamp(m.parentScene.heat + 15, 0, 100)
                 m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("refreshActiveTab", invalid)
                 m.parentScene.callFunc("addLog", "Node " + m.selectedNode.toStr() + " overclocked. Throughput +10, Heat +15.")
                 setStatus("Overclock applied successfully.")
             else
@@ -175,6 +176,7 @@ sub onActionChosen(event)
                 m.parentScene.credits = m.parentScene.credits - 20
                 m.parentScene.heat = 30
                 m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("refreshActiveTab", invalid)
                 m.parentScene.callFunc("addLog", "Node " + m.selectedNode.toStr() + " repaired. Heat reset to 30.")
                 setStatus("Repair complete. Heat normalized.")
             else
@@ -196,6 +198,7 @@ sub onActionChosen(event)
                 m.parentScene.credits = m.parentScene.credits - 500
                 m.parentScene.nodesUnlocked = m.parentScene.nodesUnlocked + 1
                 m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("refreshActiveTab", invalid)
                 m.parentScene.callFunc("addLog", "New relay node unlocked! Total: " + m.parentScene.nodesUnlocked.toStr() + "/5")
                 setStatus("Expansion successful. Node " + (m.parentScene.nodesUnlocked - 1).toStr() + " is online.")
             else
@@ -208,6 +211,7 @@ sub onActionChosen(event)
                 m.parentScene.credits = m.parentScene.credits - 200
                 m.parentScene.upgradeLevel = m.parentScene.upgradeLevel + 1
                 m.parentScene.callFunc("flushSave", invalid)
+                m.parentScene.callFunc("refreshActiveTab", invalid)
                 newMult = 1.0 + (m.parentScene.upgradeLevel * 0.25)
                 m.parentScene.callFunc("addLog", "System upgraded to level " + m.parentScene.upgradeLevel.toStr() + ". Income mult: x" + formatFloat(newMult, 2))
                 setStatus("Upgrade complete. Now level " + m.parentScene.upgradeLevel.toStr() + ".")
@@ -225,6 +229,7 @@ sub onActionChosen(event)
             m.parentScene.credits = m.parentScene.credits - 150
             m.parentScene.networkHealth = clamp(m.parentScene.networkHealth + 30, 0, 100)
             m.parentScene.callFunc("flushSave", invalid)
+            m.parentScene.callFunc("refreshActiveTab", invalid)
             m.parentScene.callFunc("addLog", "Network health restored. +30% (now " + m.parentScene.networkHealth.toStr() + "%)")
             setStatus("Health restored. Network integrity improving.")
         else

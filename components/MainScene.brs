@@ -65,6 +65,8 @@ sub init()
     m.lastRulesJson = ""
     m.lastLogsJson = ""
     m.lastUpgradeCountsJson = ""
+    m.creditRemainder = 0.0
+    m.lastRulesFired = 0
 
     print "=== RELAY-0 v1.2 booting ==="
 
@@ -107,6 +109,7 @@ sub loadGame()
                     if key = "lastTime" then m.lastSaveTime = val
                     if key = "upgrade" then m.top.upgradeLevel = val
                     if key = "health" then m.top.networkHealth = max(0, val)
+                    if key = "remainder" then m.creditRemainder = kv[1].trim().toFloat()
                 end if
             end for
         end if
@@ -176,9 +179,10 @@ sub saveGame()
     data = data + ",heat=" + heat.toStr()
     data = data + ",throughput=" + throughput.toStr()
     data = data + ",nodes=" + nodes.toStr()
-    data = data + ",lastTime=" + getCurrentEpoch().toStr()
+    data = data + ",lastTime=" + Int(getCurrentEpoch()).toStr()
     data = data + ",upgrade=" + upgrade.toStr()
     data = data + ",health=" + health.toStr()
+    data = data + ",remainder=" + m.creditRemainder.toStr()
 
     reg = m.saveReg
     reg.Write("saveVersion", m.saveVersion.toStr())
@@ -257,17 +261,53 @@ sub flushSave(dummy = invalid as dynamic)
     saveGame()
 end sub
 
-function getCurrentEpoch() as integer
+' Wall-clock seconds since the Unix epoch. AsSecondsLong() is used rather
+' than AsSeconds() because the latter is a 32-bit integer, and integer time
+' math can overflow / lose precision. Falls back where unavailable.
+function getCurrentEpoch() as double
     dt = CreateObject("roDateTime")
-    return dt.AsSeconds()
+    secs = dt.AsSecondsLong()
+    if secs = invalid then secs = dt.AsSeconds()
+    return secs
 end function
 
 ' ----- Offline Simulation -----
+' Idle rates are documented in the README. Rounding policy:
+'   - Credits accrue fractionally and the remainder is CARRIED in
+'     m.creditRemainder, so short absences are never silently lost.
+'   - Resource levels blend toward equilibrium and are rounded to the
+'     nearest integer (the fields are integer-typed).
+'   - Elapsed time is clamped to a sane range so a clock change cannot
+'     corrupt the save.
 sub simulateWhileAway()
+    t = m.tune
     now = getCurrentEpoch()
+
+    if m.lastSaveTime = invalid then m.lastSaveTime = now
     elapsedSeconds = now - m.lastSaveTime
-    if elapsedSeconds <= 0 then return
+
+    ' --- Clock anomaly guards ---
+    ' Clock moved backwards (timezone/NTP correction, or a restored save from
+    ' a device with a skewed clock): award nothing, just resynchronise.
+    if elapsedSeconds < 0
+        print "[offline] clock moved backwards by " + Int(-elapsedSeconds).toStr() + "s; resyncing without credit"
+        m.lastSaveTime = now
+        flushSave()
+        return
+    end if
+
+    ' Absurd gaps (uninitialised clock, epoch glitch) are capped so a single
+    ' bad reading cannot hand out a fortune. 7 days of idle is the ceiling.
+    maxElapsed = 7.0 * 24.0 * 3600.0
+    if elapsedSeconds > maxElapsed
+        print "[offline] elapsed " + Int(elapsedSeconds).toStr() + "s exceeds cap; clamping to 7 days"
+        elapsedSeconds = maxElapsed
+    end if
+
     m.lastSaveTime = now
+
+    ' Sub-second / trivial gaps: nothing to simulate, but keep the remainder.
+    if elapsedSeconds < 1 then return
 
     ' Pull values into locals
     throughput = m.top.throughput
@@ -287,42 +327,62 @@ sub simulateWhileAway()
     if counts.doesExist("cooling") then coolingLvl = counts["cooling"]
     if counts.doesExist("bandwidth") then bandwidthLvl = counts["bandwidth"]
 
-    ' Passive income while away, scaled by throughput and upgrade level
+    ' --- Credits: fractional accrual with carried remainder ---
     throughputMult = throughput / 50.0
     upgradeMult = 1.0 + (upgradeLevel * 0.25)
-    creditRate = Cint(m.tune.offlineRate * throughputMult * upgradeMult)
-    if creditRate < m.tune.offlineFloor then creditRate = m.tune.offlineFloor
+    creditRate = t.offlineRate * throughputMult * upgradeMult
+    if creditRate < t.offlineFloor then creditRate = t.offlineFloor
 
     minutesAwayNum = elapsedSeconds / 60.0
-    deltaCredits = Cint(creditRate * minutesAwayNum)
+
+    carried = m.creditRemainder
+    if carried = invalid then carried = 0.0
+    earnedExact = (creditRate * minutesAwayNum) + carried
+    deltaCredits = Int(earnedExact)                  ' floor, never over-award
+    m.creditRemainder = earnedExact - deltaCredits   ' keep the fraction
+
     m.top.credits = m.top.credits + deltaCredits
     if m.top.credits < 0 then m.top.credits = 0
 
-    ' While away the relay settles toward its idle equilibrium rather
-    ' than draining to zero. Longer absences land closer to the target.
+    ' --- Resource levels: blend toward equilibrium, round to nearest ---
     powerTarget = powerEquilibrium(reactorLvl, batteryLvl, nodesUnlocked)
     heatTarget = heatEquilibrium(coolingLvl)
     throughputTarget = throughputEquilibrium(bandwidthLvl)
 
-    ' Blend current -> target; settleMinutes away is fully settled
-    blend = minutesAwayNum / m.tune.settleMinutes
+    blend = minutesAwayNum / t.settleMinutes
     if blend > 1.0 then blend = 1.0
 
-    m.top.power = clamp(Cint(power + (powerTarget - power) * blend), 0, 100)
-    m.top.heat = clamp(Cint(heat + (heatTarget - heat) * blend), 0, 100)
-    m.top.throughput = clamp(Cint(throughput + (throughputTarget - throughput) * blend), 0, 100)
+    m.top.power = clamp(roundHalfUp(power + (powerTarget - power) * blend), 0, 100)
+    m.top.heat = clamp(roundHalfUp(heat + (heatTarget - heat) * blend), 0, 100)
+    m.top.throughput = clamp(roundHalfUp(throughput + (throughputTarget - throughput) * blend), 0, 100)
 
-    ' Health slowly self-repairs while idle
-    healthGain = Cint(minutesAwayNum / 2.0)
+    ' Health slowly self-repairs while idle (floored, so it never over-heals)
+    healthGain = Int(minutesAwayNum / 2.0)
     m.top.networkHealth = clamp(m.top.networkHealth + healthGain, 0, 100)
 
     if elapsedSeconds > 30
-        minutesAway = minutesAwayNum.toStr()
+        minutesAway = formatMinutes(minutesAwayNum)
         addLog("Resuming after " + minutesAway + " min offline. Earned " + deltaCredits.toStr() + " credits.")
-        print "[offline] " + minutesAway + " minutes away, +" + deltaCredits.toStr() + " credits"
+        print "[offline] " + minutesAway + " min away, +" + deltaCredits.toStr() + " credits (carry " + m.creditRemainder.toStr() + ")"
     end if
     flushSave()
 end sub
+
+' Round half away from zero. Int() truncates toward zero in BrightScript,
+' so a plain Int() on a blended value biases resources downward over time.
+function roundHalfUp(v as double) as integer
+    if v >= 0 then return Int(v + 0.5)
+    return -Int(-v + 0.5)
+end function
+
+' Two-decimal minutes for log readability.
+function formatMinutes(mins as double) as string
+    whole = Int(mins)
+    frac = Int((mins - whole) * 100 + 0.5)
+    fracStr = frac.toStr()
+    if frac < 10 then fracStr = "0" + fracStr
+    return whole.toStr() + "." + fracStr
+end function
 
 ' ----- Tab Management -----
 sub createTabs()
@@ -505,7 +565,17 @@ sub updateFooter()
 end sub
 
 ' ----- Resource Changes (Central) -----
+' THE single state-update path. Every resource mutation must go through
+' here (or through applyResourceChangesQuiet + refreshActiveTab for batches)
+' so the footer and the visible tab can never drift out of sync.
 sub applyResourceChanges(deltaPower, deltaHeat, deltaThroughput, deltaCredits, deltaHealth)
+    applyResourceChangesQuiet(deltaPower, deltaHeat, deltaThroughput, deltaCredits, deltaHealth)
+    refreshActiveTab()
+end sub
+
+' Mutate resources without refreshing the UI. Only for callers that apply
+' several changes in a row and then refresh once themselves (processRules).
+sub applyResourceChangesQuiet(deltaPower, deltaHeat, deltaThroughput, deltaCredits, deltaHealth)
     if deltaHealth = invalid then deltaHealth = 0
     m.top.power = clamp(m.top.power + deltaPower, 0, 100)
     m.top.heat = clamp(m.top.heat + deltaHeat, 0, 100)
@@ -513,13 +583,13 @@ sub applyResourceChanges(deltaPower, deltaHeat, deltaThroughput, deltaCredits, d
     m.top.networkHealth = clamp(m.top.networkHealth + deltaHealth, 0, 100)
     m.top.credits = m.top.credits + deltaCredits
     if m.top.credits < 0 then m.top.credits = 0
-    updateFooter()
-    ' Debounced save instead of immediate
+    ' Debounced save; callers needing an immediate write use flushSave()
     markDirty()
 end sub
 
 ' ----- Automation Rule Engine (Expanded) -----
 sub processRules()
+    m.lastRulesFired = 0
     rules = m.top.rules
     if rules = invalid or rules.count() = 0 then return
 
@@ -544,22 +614,29 @@ sub processRules()
         if condition = "health < 30" and currentHealth < 30 then satisfied = true
 
         if satisfied
-            if action = "boost_power" then applyResourceChanges(12, 0, 0, 0, 0)
-            if action = "reduce_heat" then applyResourceChanges(0, -18, 0, 0, 0)
-            if action = "earn_credits" then applyResourceChanges(0, 0, 0, 30, 0)
-            if action = "repair_health" then applyResourceChanges(0, 0, 0, 0, 15)
-            if action = "boost_throughput" then applyResourceChanges(0, 5, 15, 0, 0)
-            if action = "emergency_cool" then applyResourceChanges(5, -30, -10, -15, 5)
+            ' Quiet variant: batch all firing rules, then refresh once below
+            if action = "boost_power" then applyResourceChangesQuiet(12, 0, 0, 0, 0)
+            if action = "reduce_heat" then applyResourceChangesQuiet(0, -18, 0, 0, 0)
+            if action = "earn_credits" then applyResourceChangesQuiet(0, 0, 0, 30, 0)
+            if action = "repair_health" then applyResourceChangesQuiet(0, 0, 0, 0, 15)
+            if action = "boost_throughput" then applyResourceChangesQuiet(0, 5, 15, 0, 0)
+            if action = "emergency_cool" then applyResourceChangesQuiet(5, -30, -10, -15, 5)
             addLog("Rule fired: " + condition + " -> " + action)
             rulesFired = rulesFired + 1
-            ' Refresh locals after applyResourceChanges mutates values
+            ' Refresh locals after the mutation so later rules see new values
             currentPower = m.top.power
             currentHeat = m.top.heat
             currentThroughput = m.top.throughput
             currentHealth = m.top.networkHealth
         end if
     end for
-    if rulesFired > 0 then print "[rules] " + rulesFired.toStr() + " rule(s) fired"
+    m.lastRulesFired = rulesFired
+    if rulesFired > 0
+        print "[rules] " + rulesFired.toStr() + " rule(s) fired"
+        ' Single refresh for the whole batch, so Monitor and the footer
+        ' reflect rule activity immediately rather than on the next tick.
+        refreshActiveTab()
+    end if
 end sub
 
 ' ----- Event Timer (every 30s) -----
@@ -579,14 +656,16 @@ sub onEventTimer()
     struggling = (m.top.power < 25 or m.top.heat > 80 or m.top.networkHealth < 40)
     chance = m.tune.eventChance
     if struggling then chance = m.tune.eventChanceStruggle
-    if rnd(100) <= chance then triggerRandomEvent()
+    fired = false
+    if rnd(100) <= chance
+        triggerRandomEvent()
+        fired = true
+    end if
 
-    ' Notify visible tabs
-    if m.tabs = invalid then return
-    for each tabNode in m.tabs
-        if tabNode.visible then tabNode.callFunc("onEvent", invalid)
-    end for
-    updateFooter()
+    ' processRules() and triggerRandomEvent() each refresh when they change
+    ' something, so only refresh here if neither of them did (keeps the
+    ' footer honest on quiet ticks without double work).
+    if not fired and m.lastRulesFired = 0 then refreshActiveTab()
 end sub
 
 ' ----- Income Timer (every 15s) -----
@@ -656,10 +735,8 @@ sub onIncomeTick()
     if power < t.healthPowerDamage then healthDelta = healthDelta - 1
     if health >= 100 then healthDelta = 0
 
+    ' applyResourceChanges() refreshes the footer and visible tab itself.
     applyResourceChanges(powerDelta, heatDelta, throughputDelta, earned, healthDelta)
-
-    ' Refresh whichever tab is currently visible so live values update
-    refreshActiveTab()
 end sub
 
 ' ---- Equilibrium helpers (shared by live ticks and offline sim) ----
@@ -686,7 +763,7 @@ function throughputEquilibrium(bandwidthLvl) as integer
 end function
 
 ' Refresh the currently visible tab plus the footer ticker
-sub refreshActiveTab()
+sub refreshActiveTab(dummy = invalid as dynamic)
     updateFooter()
     if m.tabs = invalid then return
     tabIdx = m.top.activeTab
@@ -760,9 +837,12 @@ sub triggerRandomEvent()
         end if
     end if
 
+    ' Apply the mutation BEFORE logging so the Logs tab (and any refresh
+    ' triggered by addLog) observes post-event values, not stale ones.
     print "[event] " + msg
+    applyResourceChangesQuiet(deltaP, deltaH, deltaT, deltaC, deltaHp)
     addLog(msg)
-    applyResourceChanges(deltaP, deltaH, deltaT, deltaC, deltaHp)
+    refreshActiveTab()
 end sub
 
 ' ----- Utility Functions -----

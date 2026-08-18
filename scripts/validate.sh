@@ -17,6 +17,10 @@ echo "==> BrightScript / SceneGraph validation"
 python3 scripts/validate_brightscript.py
 
 echo
+echo "==> Idle simulation math tests"
+python3 scripts/test_idle_sim.py
+
+echo
 if [[ -f package.json ]]; then
   if command -v npm >/dev/null 2>&1; then
     echo "==> Node checks (package.json present)"

@@ -67,9 +67,89 @@ classes that have actually reached device testing on this project:
 | `<interface>` promises a function the `.brs` lacks | `callFunc` returns `invalid` at runtime |
 | `callFunc` target not published by any `<interface>` (warning) | Silent no-op — the single largest source of "nothing happens" bugs here |
 
+`scripts/test_idle_sim.py` — deterministic tests for the offline/idle math.
+BrightScript cannot run off-device, so this mirrors the arithmetic in
+`simulateWhileAway()` and asserts its documented properties. It parses the
+`tuning()` table straight out of `MainScene.brs`, so retuning the game
+without updating expectations fails the tests rather than drifting silently.
+Covers 30s / 60s / 5min / 8h absences, remainder carrying, clock anomalies,
+bounds, and equilibrium behaviour.
+
 CI additionally verifies that a sideload zip can be assembled, that every
 component has both a `.brs` and an `.xml`, and uploads the package as a
 build artifact.
+
+## Idle rates and rounding
+
+Two timers drive the simulation while the channel is open:
+
+| Timer | Period | Effect |
+|---|---|---|
+| Income | 15s | Credits, plus power/heat/throughput/health drift toward equilibrium |
+| Event | 30s | Evaluates automation rules, then may fire one random event |
+
+**Credits** accrue at `offlineRate × (throughput ÷ 50) × (1 + 0.25 × upgradeLevel)`
+per minute, floored at `offlineFloor`. While offline the exact fractional
+amount is computed, the integer part is awarded, and **the fraction is carried
+in the save** — so ten separate 30-second absences award exactly as much as one
+300-second absence. Without the carry, each short session silently truncated
+its progress to zero.
+
+**Resource levels** are integer fields. They blend from their current value
+toward an equilibrium target, reaching it after `settleMinutes` away, and are
+rounded half-away-from-zero (`roundHalfUp`). Plain truncation would bias every
+resource downward on each launch. Health self-repair is floored so it never
+over-heals.
+
+**Equilibrium targets** are raised or lowered by upgrades:
+
+| Resource | Base | Modifiers |
+|---|---|---|
+| Power | `powerBase` | `+` Reactor Shielding, `+` Capacitor Bank, `−` per extra node |
+| Heat | `heatBase` | `−` Cryo Manifold |
+| Throughput | `throughputBase` | `+` Bandwidth Expander |
+
+**Clock safety.** Elapsed time is derived from `AsSecondsLong()` (not the
+32-bit `AsSeconds()`). If the clock moves backwards, the game resynchronises
+and awards nothing rather than corrupting the save. Gaps beyond 7 days are
+clamped, so a bad clock reading cannot hand out a fortune.
+
+## State-update path
+
+All resource mutations flow through **one** path so the footer and the visible
+tab can never disagree:
+
+- `applyResourceChanges(...)` — mutates, then calls `refreshActiveTab()`.
+- `applyResourceChangesQuiet(...)` — mutates only; used by `processRules()`
+  to batch several firing rules and refresh once.
+- `refreshActiveTab()` — updates the footer plus the currently visible tab.
+  It is published on MainScene's interface so tabs can call it after their
+  own actions (`NodesTab` overclock/repair/expand, `UpgradesTab` purchases).
+
+Random events apply their mutation *before* logging, so the Logs tab and any
+refresh triggered by `addLog()` observe post-event values.
+
+### Manual regression checklist
+
+Confirm on-device after changing resource or refresh logic. Watch the footer
+and Monitor tab without switching tabs.
+
+1. **Automation rule fires** — create a rule whose condition is already true
+   (e.g. `heat > 70` while hot). Within 30s the footer and Monitor must both
+   change, and LOGS must show `Rule fired: ...`.
+2. **Random event** — idle on the Monitor tab. When an event logs, the bars
+   and footer must update in the same tick.
+3. **Overclock** (Nodes) — throughput and heat must change immediately in the
+   footer, with no tab switch.
+4. **Repair** (Nodes) — heat must drop to 30 immediately.
+5. **Expand** (Nodes) — credits drop by 500 and node count rises immediately;
+   the power equilibrium then settles lower over the next few ticks.
+6. **Purchase** (Upgrades) — credits drop, the upgrade's level increments, and
+   the affected resource moves immediately.
+7. **Offline** — close the channel, wait a minute, relaunch. LOGS must report
+   `Resuming after N.NN min offline. Earned X credits.`
+8. **No duplicates** — each action above should produce exactly one log entry
+   and one save flush (`[saveGame] flushed dirty save` on the debug console).
 
 ## Sideloading
 
