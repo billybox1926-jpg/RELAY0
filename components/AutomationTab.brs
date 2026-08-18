@@ -1,8 +1,5 @@
 ' ============================================================
-' RELAY-0 — AutomationTab.brs  (Rule Management)
-' ============================================================
-' Upgraded: 6 conditions, 6 actions, max 10 rules,
-' dialog-based creation (2-step), fixed deletion edge cases
+' RELAY-0 - AutomationTab.brs  (Rule Management)
 ' ============================================================
 
 sub init()
@@ -16,26 +13,30 @@ sub setParentScene(parent)
 end sub
 
 sub updateRuleList()
-    if m.parentScene = invalid or m.parentScene.rules = invalid then return
-    rules = m.parentScene.rules
-    if rules.count() = 0
+    if m.parentScene = invalid or m.parentScene.rules = invalid then
         m.top.findNode("ruleList").text = "No rules installed."
         return
     end if
+
+    rules = m.parentScene.rules
+    if rules.count() = 0 then
+        m.top.findNode("ruleList").text = "No rules installed."
+        return
+    end if
+
     text = ""
     for i = 0 to rules.count() - 1
         r = rules[i]
         prefix = "  "
         if i = m.selectedIndex then prefix = "> "
-        conditionText = r.condition
-        actionText = r.action
-        text = text + prefix + "[" + i.toStr() + "] " + conditionText + "  ->  " + actionText + chr(10)
+        text = text + prefix + "[" + i.toStr() + "] " + r.condition + "  ->  " + r.action + chr(10)
     end for
     m.top.findNode("ruleList").text = text
 end sub
 
 function handleKey(key as string) as boolean
     if m.parentScene = invalid then return false
+
     rules = m.parentScene.rules
     if rules = invalid then rules = []
 
@@ -43,16 +44,20 @@ function handleKey(key as string) as boolean
         if m.selectedIndex > 0 then m.selectedIndex = m.selectedIndex - 1
         updateRuleList()
         return true
-    else if key = "down"
+    end if
+
+    if key = "down"
         if m.selectedIndex < rules.count() - 1 then m.selectedIndex = m.selectedIndex + 1
         updateRuleList()
         return true
-    else if key = "right"
-        ' Delete selected rule
+    end if
+
+    if key = "right"
         if rules.count() > 0 and m.selectedIndex < rules.count()
             deletedCondition = rules[m.selectedIndex].condition
-            rules.delete(m.selectedIndex)
-            ' Adjust selection
+            rules.Delete(m.selectedIndex)
+            ' Node fields are copy-on-access: assign the mutated local back.
+            m.parentScene.rules = rules
             maxIdx = rules.count() - 1
             if maxIdx < 0 then maxIdx = 0
             if m.selectedIndex > maxIdx then m.selectedIndex = maxIdx
@@ -61,8 +66,9 @@ function handleKey(key as string) as boolean
             updateRuleList()
         end if
         return true
-    else if key = "OK"
-        ' Check max rules (10)
+    end if
+
+    if key = "OK"
         if rules.count() >= 10
             m.parentScene.addLog("Cannot add rule: maximum 10 rules reached.")
             return true
@@ -70,6 +76,7 @@ function handleKey(key as string) as boolean
         showRuleBuilder()
         return true
     end if
+
     return false
 end function
 
@@ -106,7 +113,6 @@ sub onConditionSelected(event)
         "throughput < 20",
         "health < 30"
     ]
-    if idx < 0 or idx > conditions.count() - 1 then return
     selectedCondition = conditions[idx]
 
     dialog2 = CreateObject("roSGNode", "Dialog")
@@ -122,8 +128,6 @@ sub onConditionSelected(event)
         "Emergency Cool (+5 Pow, -30 Heat, -15 Credits, +5 Health)",
         "Cancel"
     ]
-    ' Store condition using a safe method (addfield on dialog is not available,
-    ' so we store it in m before creating the observer)
     m.pendingCondition = selectedCondition
     dialog2.observeField("buttonSelected", "onActionSelected")
     m.top.getScene().dialog = dialog2
@@ -135,8 +139,8 @@ sub onActionSelected(event)
     idx = dialog.buttonSelected
     condition = m.pendingCondition
     m.top.getScene().dialog = invalid
-    if idx = 6 or idx = -1 then return
-    if condition = invalid then return
+    m.pendingCondition = invalid
+    if idx = 6 or idx = -1 or condition = invalid then return
 
     actions = [
         "boost_power",
@@ -146,15 +150,16 @@ sub onActionSelected(event)
         "boost_throughput",
         "emergency_cool"
     ]
-    if idx < 0 or idx > actions.count() - 1 then return
     selectedAction = actions[idx]
 
-    if m.parentScene.rules = invalid then m.parentScene.rules = []
+    ' Node fields are copy-on-access: read into a local, mutate, assign back.
+    currentRules = m.parentScene.rules
+    if currentRules = invalid then currentRules = []
     rule = { condition: condition, action: selectedAction, target: "self" }
-    m.parentScene.rules.push(rule)
+    currentRules.push(rule)
+    m.parentScene.rules = currentRules
     m.parentScene.flushSave()
     m.parentScene.addLog("New rule: " + condition + " -> " + selectedAction)
-    m.pendingCondition = invalid
     updateRuleList()
 end sub
 

@@ -31,7 +31,7 @@
         <!-- Tab Navigation Bar -->
         <Rectangle id="tabBarBg" translation="[0, 44]" width="1280" height="44" color="#0D150D" />
         <Label id="tabMonitor" text="MONITOR"
-               translation="[60, 52]" font="font:MediumBoldSystemFont" color="0xFFFFFF00" />
+               translation="[60, 52]" font="font:MediumBoldSystemFont" color="0xFFFFFFFF" />
         <Label id="tabAuto" text="AUTOMATION"
                translation="[360, 52]" font="font:MediumBoldSystemFont" color="0x44FF44FF" />
         <Label id="tabNodes" text="NODES"
@@ -40,7 +40,7 @@
                translation="[1000, 52]" font="font:MediumBoldSystemFont" color="0x44FF44FF" />
         
         <!-- Tab underline indicators -->
-        <Rectangle id="tabUnderline0" translation="[50, 82]" width="180" height="3" color="0xFFFFFF00" />
+        <Rectangle id="tabUnderline0" translation="[50, 82]" width="180" height="3" color="0xFFFFFFFF" />
         <Rectangle id="tabUnderline1" translation="[350, 82]" width="220" height="3" color="0x00FF4140" />
         <Rectangle id="tabUnderline2" translation="[710, 82]" width="160" height="3" color="0x00FF4140" />
         <Rectangle id="tabUnderline3" translation="[990, 82]" width="120" height="3" color="0x00FF4140" />

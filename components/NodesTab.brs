@@ -1,5 +1,5 @@
 ' ============================================================
-' RELAY-0 — NodesTab.brs  (Node Management)
+' RELAY-0 - NodesTab.brs  (Node Management)
 ' ============================================================
 ' Upgraded: Dialog-based action selection, 5 actions,
 ' expand to 5 nodes, upgrade system, network repair,
@@ -30,8 +30,8 @@ sub updateUI()
 
     ' Node info
     if m.selectedNode = 0
-        m.top.findNode("nodeInfo").text = "Primary Node [0]  —  Core Relay Hub"
-        m.top.findNode("nodeName").text = "NODE 0 — Primary Relay Hub"
+        m.top.findNode("nodeInfo").text = "Primary Node [0]  -  Core Relay Hub"
+        m.top.findNode("nodeName").text = "NODE 0 - Primary Relay Hub"
         m.top.findNode("nodeStatus").text = "Status: ONLINE  |  All systems operational"
         m.top.findNode("nodeStatus").color = "#88FF88FF"
 
@@ -52,8 +52,8 @@ sub updateUI()
         m.top.findNode("action5").visible = true
         m.top.findNode("actionsTitle").visible = true
     else if m.selectedNode < nodeCount
-        m.top.findNode("nodeInfo").text = "Relay Node [" + m.selectedNode.toStr() + "]  —  Satellite"
-        m.top.findNode("nodeName").text = "NODE " + m.selectedNode.toStr() + " — Relay Satellite"
+        m.top.findNode("nodeInfo").text = "Relay Node [" + m.selectedNode.toStr() + "]  -  Satellite"
+        m.top.findNode("nodeName").text = "NODE " + m.selectedNode.toStr() + " - Relay Satellite"
         m.top.findNode("nodeStatus").text = "Status: STANDBY  |  Awaiting expansion"
         m.top.findNode("nodeStatus").color = "#FFAA44FF"
         m.top.findNode("nodeStats").text = "This node is operational but has limited functions."
@@ -64,8 +64,8 @@ sub updateUI()
         m.top.findNode("action5").visible = true
         m.top.findNode("actionsTitle").visible = true
     else
-        m.top.findNode("nodeInfo").text = "Node [" + m.selectedNode.toStr() + "]  —  LOCKED"
-        m.top.findNode("nodeName").text = "NODE " + m.selectedNode.toStr() + " — LOCKED"
+        m.top.findNode("nodeInfo").text = "Node [" + m.selectedNode.toStr() + "]  -  LOCKED"
+        m.top.findNode("nodeName").text = "NODE " + m.selectedNode.toStr() + " - LOCKED"
         m.top.findNode("nodeStatus").text = "Status: OFFLINE  |  Expand your network to unlock"
         m.top.findNode("nodeStatus").color = "#FF4444FF"
         m.top.findNode("nodeStats").text = "This node is not yet unlocked. Use EXPAND action on primary node."
@@ -126,7 +126,7 @@ sub showActionDialog()
     if buttons.count() <= 1 then return
 
     dialog = CreateObject("roSGNode", "Dialog")
-    dialog.title = "NODE " + m.selectedNode.toStr() + " — ACTIONS"
+    dialog.title = "NODE " + m.selectedNode.toStr() + " - ACTIONS"
     dialog.optionsDialog = true
     dialog.message = "Current credits: " + m.parentScene.credits.toStr()
     dialog.buttons = buttons

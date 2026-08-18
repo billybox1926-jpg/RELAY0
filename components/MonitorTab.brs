@@ -1,5 +1,5 @@
 ' ============================================================
-' RELAY-0 — MonitorTab.brs  (Dashboard Display)
+' RELAY-0 - MonitorTab.brs  (Dashboard Display)
 ' ============================================================
 
 sub init()

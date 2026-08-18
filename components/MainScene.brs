@@ -1,7 +1,7 @@
 ' ============================================================
-' RELAY-0 — MainScene.brs  (Core Game Engine v1.1)
+' RELAY-0 - MainScene.brs  (Core Game Engine v1.1)
 ' ============================================================
-' v1.1 — Roku Platform Optimizations:
+' v1.1 - Roku Platform Optimizations:
 '   - Cached roRegistrySection (avoid re-creating on every save)
 '   - Dirty-flag save throttling (debounced 2s timer instead of
 '     saving on every single event/rule/income tick)
@@ -54,21 +54,20 @@ sub loadGame()
     if reg.Exists("saveData")
         data = reg.Read("saveData")
         if data <> invalid and data <> ""
-            fields = m.top.getFields()
             parts = data.split(",")
             for each p in parts
                 kv = p.split("=")
                 if kv.count() = 2
                     key = kv[0].trim()
                     val = kv[1].trim().toInt()
-                    if key = "credits" then fields.credits = val
-                    if key = "power" then fields.power = val
-                    if key = "heat" then fields.heat = val
-                    if key = "throughput" then fields.throughput = val
-                    if key = "nodes" then fields.nodesUnlocked = max(1, val)
+                    if key = "credits" then m.top.credits = val
+                    if key = "power" then m.top.power = val
+                    if key = "heat" then m.top.heat = val
+                    if key = "throughput" then m.top.throughput = val
+                    if key = "nodes" then m.top.nodesUnlocked = max(1, val)
                     if key = "lastTime" then m.lastSaveTime = val
-                    if key = "upgrade" then fields.upgradeLevel = val
-                    if key = "health" then fields.networkHealth = max(0, val)
+                    if key = "upgrade" then m.top.upgradeLevel = val
+                    if key = "health" then m.top.networkHealth = max(0, val)
                 end if
             end for
         end if
@@ -179,12 +178,12 @@ sub onSaveTimer()
 end sub
 
 sub flushSave()
-    ' Immediate save (used during init/shutdown)
-    if m.saveDirty
-        m.saveDirty = false
-        if m.saveTimer <> invalid then m.saveTimer.control = "stop"
-        saveGame()
-    end if
+    ' Immediate unconditional save. Callers (tabs, init/shutdown) mutate
+    ' m.top fields or rules/logs directly without going through markDirty(),
+    ' so this must not be gated on m.saveDirty or those writes are lost.
+    m.saveDirty = false
+    if m.saveTimer <> invalid then m.saveTimer.control = "stop"
+    saveGame()
 end sub
 
 function getCurrentEpoch() as integer
@@ -247,17 +246,22 @@ end sub
 
 ' ----- Tab Management -----
 sub createTabs()
+    container = m.top.findNode("tabContainer")
+    if container = invalid
+        print "[createTabs] FATAL: tabContainer node not found"
+        return
+    end if
+
     m.tabs = [
         CreateObject("roSGNode", "MonitorTab"),
         CreateObject("roSGNode", "AutomationTab"),
         CreateObject("roSGNode", "NodesTab"),
         CreateObject("roSGNode", "LogsTab")
     ]
-    for each tab in m.tabs
-        tab.fields = m.top.getFields()
-        tab.callFunc("setParentScene", m.top)
-        m.top.tabContainer.appendChild(tab)
-        tab.visible = false
+    for each tabNode in m.tabs
+        tabNode.callFunc("setParentScene", m.top)
+        container.appendChild(tabNode)
+        tabNode.visible = false
     end for
     showCurrentTab()
 end sub
@@ -299,9 +303,9 @@ sub updateTabHighlight()
         ]
     end if
 
-    dimColor = 0x44FF44FF
-    dimUnder = 0x00FF4140
-    activeColor = 0xFFFFFF00
+    dimColor = &h44FF44FF
+    dimUnder = &h00FF4140
+    activeColor = &hFFFFFFFF
 
     for i = 0 to 3
         m.tabLabels[i].color = dimColor
@@ -334,14 +338,29 @@ end function
 
 ' ----- Logging -----
 sub addLog(msg as string)
-    if m.top.logEntries = invalid then m.top.logEntries = []
     dt = CreateObject("roDateTime")
-    timestamp = dt.AsDateString() + " " + dt.ToTimeString()
+    dt.ToLocalTime()
+    hh = dt.GetHours()
+    mm = dt.GetMinutes()
+    ss = dt.GetSeconds()
+    hhs = hh.toStr()
+    mms = mm.toStr()
+    sss = ss.toStr()
+    if hh < 10 then hhs = "0" + hhs
+    if mm < 10 then mms = "0" + mms
+    if ss < 10 then sss = "0" + sss
+    timestamp = dt.AsDateString("short-date") + " " + hhs + ":" + mms + ":" + sss
     entry = timestamp + ": " + msg
-    m.top.logEntries.unshift(entry)
-    while m.top.logEntries.count() > 100
-        m.top.logEntries.pop()
+
+    ' Node fields are copy-on-access: mutating m.top.logEntries in place would
+    ' only modify a throwaway copy. Read into a local, mutate, assign back.
+    entries = m.top.logEntries
+    if entries = invalid then entries = []
+    entries.unshift(entry)
+    while entries.count() > 100
+        entries.pop()
     end while
+    m.top.logEntries = entries
 
     ' Refresh logs tab if visible
     if m.top.activeTab = 3 and m.tabs.count() > 3
@@ -382,11 +401,11 @@ sub updateFooter()
     footer.text = text
 
     if heat > 80 or power < 15 or networkHealth < 30
-        footer.color = 0xFF4444FF
+        footer.color = &hFF4444FF
     else if heat > 60 or power < 30
-        footer.color = 0xFFAA44FF
+        footer.color = &hFFAA44FF
     else
-        footer.color = 0x88FF88FF
+        footer.color = &h88FF88FF
     end if
 end sub
 
@@ -417,7 +436,7 @@ sub processRules()
 
     rulesFired = 0
     for each rule in rules
-        if rule.condition = invalid or rule.action = invalid then continue
+        if rule.condition = invalid or rule.action = invalid then continue for
         condition = rule.condition
         action = rule.action
         satisfied = false
@@ -461,8 +480,8 @@ sub onEventTimer()
     processRules()
     if rnd(100) <= 35 then triggerRandomEvent()
     ' Notify visible tabs
-    for each tab in m.tabs
-        if tab.visible then tab.callFunc("onEvent")
+    for each tabNode in m.tabs
+        if tabNode.visible then tabNode.callFunc("onEvent")
     end for
 end sub
 
@@ -511,40 +530,40 @@ sub triggerRandomEvent()
     deltaP = 0 : deltaH = 0 : deltaT = 0 : deltaC = 0 : deltaHp = 0
 
     if eventType = 1
-        msg = "!! INTRUSION DETECTED — Unauthorized access. Throughput -15, Credits -10."
+        msg = "!! INTRUSION DETECTED - Unauthorized access. Throughput -15, Credits -10."
         deltaT = -15 : deltaC = -10 : deltaHp = -5
     else if eventType = 2
-        msg = ">> THERMAL SPIKE — Cooling failure. Heat +20, Power -10."
+        msg = ">> THERMAL SPIKE - Cooling failure. Heat +20, Power -10."
         deltaH = 20 : deltaP = -10
     else if eventType = 3
-        msg = ">> PACKET STORM — Data surge. Throughput +25, Heat +15."
+        msg = ">> PACKET STORM - Data surge. Throughput +25, Heat +15."
         deltaT = 25 : deltaH = 15
     else if eventType = 4
-        msg = "** EFFICIENCY BOOST — Optimized routing. Credits +30."
+        msg = "** EFFICIENCY BOOST - Optimized routing. Credits +30."
         deltaC = 30
     else if eventType = 5
-        msg = "~~ GHOST SIGNAL — Unknown node whispering. Heat -10, Credits +5."
+        msg = "~~ GHOST SIGNAL - Unknown node whispering. Heat -10, Credits +5."
         deltaH = -10 : deltaC = 5
     else if eventType = 6
-        msg = "** POWER SURGE — Grid feedback. Power +25, Heat +10."
+        msg = "** POWER SURGE - Grid feedback. Power +25, Heat +10."
         deltaP = 25 : deltaH = 10
     else if eventType = 7
-        msg = "!! DATA CORRUPTION — Memory damaged. Throughput -20, Health -10."
+        msg = "!! DATA CORRUPTION - Memory damaged. Throughput -20, Health -10."
         deltaT = -20 : deltaHp = -10
     else if eventType = 8
-        msg = "++ FIRMWARE UPDATE — Patch applied. Health +15, Throughput +5."
+        msg = "++ FIRMWARE UPDATE - Patch applied. Health +15, Throughput +5."
         deltaHp = 15 : deltaT = 5
     else if eventType = 9
-        msg = "!! SOLAR FLARE — EM interference. All systems disrupted."
+        msg = "!! SOLAR FLARE - EM interference. All systems disrupted."
         deltaP = -15 : deltaH = 25 : deltaT = -10 : deltaHp = -8
     else if eventType = 10
-        msg = "$$ CONTRACT FULFILLED — Payment received. Credits +50."
+        msg = "$$ CONTRACT FULFILLED - Payment received. Credits +50."
         deltaC = 50
     else if eventType = 11
-        msg = "++ COOLING CACHE — Coolant reserves found. Heat -25."
+        msg = "++ COOLING CACHE - Coolant reserves found. Heat -25."
         deltaH = -25
     else
-        msg = "~~ SYSTEM GLITCH — Minor anomaly. Power +5, Heat -5."
+        msg = "~~ SYSTEM GLITCH - Minor anomaly. Power +5, Heat -5."
         deltaP = 5 : deltaH = -5
     end if
 

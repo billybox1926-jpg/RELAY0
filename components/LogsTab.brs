@@ -1,5 +1,5 @@
 ' ============================================================
-' RELAY-0 — LogsTab.brs  (System Log Viewer)
+' RELAY-0 - LogsTab.brs  (System Log Viewer)
 ' ============================================================
 ' Upgraded: Clear logs function, entry count, improved formatting
 ' ============================================================
