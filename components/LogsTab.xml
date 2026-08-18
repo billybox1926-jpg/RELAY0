@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="LogsTab" extends="Group">
+    <interface>
+        <function name="handleKeyEvent" />
+    </interface>
+    
     <children>
         <Label id="title" text="=== SYSTEM LOGS ===" translation="[100,20]" font="font:MediumSystemFont" color="0x00FF41FF" />
         <Label id="logDisplay" text="" translation="[100,60]" font="font:SystemFont" color="0xCCFFCC" wrap="true" width="1600" height="800" />

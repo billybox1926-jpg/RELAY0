@@ -145,7 +145,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
         return true
     end if
     current = m.tabs[m.top.activeTab]
-    if current <> invalid and current.onKeyEvent(key, press) then return true
+    if current <> invalid and current.callFunc("handleKeyEvent", key, press) then 
+        return true
+    end if
+    
     return false
 end function
 

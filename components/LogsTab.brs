@@ -22,6 +22,6 @@ function onEvent() as boolean
     return false
 end function
 
-function onKeyEvent(key as string, press as boolean) as boolean
+function handleKeyEvent(key as string, press as boolean) as boolean
     return false
 end function
