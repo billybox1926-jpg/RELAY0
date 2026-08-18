@@ -145,3 +145,8 @@ function formatFloat(val, decimals) as string
     if frac.len() > decimals then frac = frac.left(decimals)
     return whole + "." + frac
 end function
+
+sub deliberatelyBroken()
+    dt = CreateObject("roDateTime")
+    stamp = dt.AsDateString() + dt.ToTimeString()
+    m.top.someChildId.appendChild(dt)
