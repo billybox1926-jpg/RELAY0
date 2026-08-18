@@ -103,6 +103,15 @@ end function
 
 sub showActionDialog()
     if m.parentScene = invalid then return
+    ' Refuse to stack dialogs. Without this, a rapid OK burst opens a fresh
+    ' dialog per press and each one resolves into its own action, so 20
+    ' presses performed 10 overclocks. Guarding the callback alone is not
+    ' enough because closeDialog() clears the busy flag before the next
+    ' press arrives.
+    scene = m.top.getScene()
+    if scene <> invalid and scene.dialog <> invalid then return
+    if m.dialogBusy = true then return
+
     nodeCount = m.parentScene.nodesUnlocked
 
     ' Build button list based on what's available
@@ -147,6 +156,16 @@ sub onActionChosen(event)
     idx = dialog.buttonSelected
     closeDialog()
     if idx = -1 then return
+
+    ' Cooldown: a rapid OK burst forms open->confirm pairs, so 20 presses
+    ' could perform 10 real actions. One action per second is well above
+    ' deliberate use but well below a machine-gun burst.
+    now = CreateObject("roDateTime").AsSeconds()
+    if m.lastNodeActionAt <> invalid and now = m.lastNodeActionAt
+        setStatus("One action at a time.")
+        return
+    end if
+    m.lastNodeActionAt = now
 
     cancelIdx = m.pendingButtons.count() - 1
     if idx = cancelIdx then return

@@ -73,6 +73,13 @@ sub clearLogs()
     count = m.parentScene.logEntries.count()
     if count = 0 then return
 
+    ' Refuse to stack dialogs: a rapid OK burst would otherwise open one
+    ' dialog per press, each resolving into its own action.
+    scene = m.top.getScene()
+    if scene <> invalid and scene.dialog <> invalid then return
+    if m.dialogBusy = true then return
+
+
     dialog = CreateObject("roSGNode", "Dialog")
     dialog.title = "CLEAR LOGS"
     dialog.optionsDialog = true

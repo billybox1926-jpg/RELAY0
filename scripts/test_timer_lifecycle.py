@@ -194,6 +194,53 @@ def test_reentrancy() -> None:
                   f"{releases} explicit release(s) + {closes} closeDialog()")
 
 
+def test_input_guards() -> None:
+    print("\nInput resilience guards (#11):")
+    # Dialog openers must refuse to stack.
+    openers = {
+        "NodesTab.brs": "sub showActionDialog()",
+        "AutomationTab.brs": "sub showRuleBuilder()",
+    }
+    for name, head in openers.items():
+        src = strip_comments(read(os.path.join(COMPONENTS, name)))
+        body = body_of(src, head)
+        check(f"{name}: {head} exists", bool(body))
+        check(f"{name}: refuses to open when a dialog is already present",
+              "scene.dialog <> invalid" in body, body[:200])
+        check(f"{name}: also checks the busy flag",
+              "m.dialogBusy = true then return" in body, body[:200])
+
+    logs = strip_comments(read(os.path.join(COMPONENTS, "LogsTab.brs")))
+    check("LogsTab: clear-confirm refuses to stack dialogs",
+          "scene.dialog <> invalid" in logs)
+
+    # Action cooldowns: guarding the dialog alone still allowed ~10 actions
+    # from a 20-press burst, because bursts form open->confirm pairs.
+    cooldowns = {
+        "NodesTab.brs": "m.lastNodeActionAt",
+        "UpgradesTab.brs": "m.lastPurchaseAt",
+        "AutomationTab.brs": "m.lastRuleAddAt",
+    }
+    for name, var in cooldowns.items():
+        src = strip_comments(read(os.path.join(COMPONENTS, name)))
+        check(f"{name}: has a {var} cooldown", var in src)
+        check(f"{name}: cooldown compares against AsSeconds()",
+              "AsSeconds()" in src)
+
+    autom = strip_comments(read(os.path.join(COMPONENTS, "AutomationTab.brs")))
+    check("AutomationTab: rule deletion is debounced",
+          "m.lastDeleteAt" in autom)
+
+    # A cooldown that calls a helper the component lacks would crash.
+    for name in ("NodesTab.brs", "UpgradesTab.brs"):
+        src = read(os.path.join(COMPONENTS, name))
+        if "setStatus(" in src:
+            check(f"{name}: defines setStatus() it calls",
+                  "sub setStatus(" in src)
+    check("AutomationTab: does not call an undefined setStatus()",
+          "setStatus(" not in autom or "sub setStatus(" in autom)
+
+
 def main() -> int:
     for p in (MAIN_SCENE, MAIN_BRS):
         if not os.path.isfile(p):
@@ -210,6 +257,7 @@ def main() -> int:
     test_shutdown(ms, main_src)
     test_dialog_observers()
     test_reentrancy()
+    test_input_guards()
 
     print()
     if FAILURES:

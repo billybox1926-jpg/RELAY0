@@ -53,6 +53,10 @@ function handleKey(key as string) as boolean
     end if
 
     if key = "right"
+        ' Debounce: a rapid RIGHT burst would delete several rules at once.
+        now = CreateObject("roDateTime").AsSeconds()
+        if m.lastDeleteAt <> invalid and now = m.lastDeleteAt then return true
+        m.lastDeleteAt = now
         if rules.count() > 0 and m.selectedIndex < rules.count()
             deletedCondition = rules[m.selectedIndex].condition
             rules.Delete(m.selectedIndex)
@@ -81,6 +85,12 @@ function handleKey(key as string) as boolean
 end function
 
 sub showRuleBuilder()
+    ' Refuse to stack dialogs: a rapid OK burst would otherwise open one
+    ' dialog per press, each resolving into its own action.
+    scene = m.top.getScene()
+    if scene <> invalid and scene.dialog <> invalid then return
+    if m.dialogBusy = true then return
+
     ' Condition labels shown to the player, paired 1:1 with m.conditionKeys
     ' below. Cancel is always the last button, so its index is derived
     ' rather than hardcoded.
@@ -174,6 +184,17 @@ sub onActionSelected(event)
     if m.actionKeys = invalid then return
     if idx < 0 or idx > m.actionKeys.count() - 1 then return
     selectedAction = m.actionKeys[idx]
+
+    ' Cooldown: the rule builder is a two-dialog flow, so a rapid OK burst
+    ' can walk condition -> action repeatedly and create several rules from
+    ' one unintended press storm. One rule per second is well above
+    ' deliberate use.
+    now = CreateObject("roDateTime").AsSeconds()
+    if m.lastRuleAddAt <> invalid and now = m.lastRuleAddAt
+        ' AutomationTab has no status label; the rule list is the feedback.
+        return
+    end if
+    m.lastRuleAddAt = now
 
     ' Node fields are copy-on-access: read into a local, mutate, assign back.
     currentRules = m.parentScene.rules

@@ -162,6 +162,16 @@ function handleKey(key as string) as boolean
 end function
 
 sub purchaseSelected()
+    ' Debounce rapid OK: Upgrades has no confirmation dialog, so without a
+    ' cooldown a 15-press burst spends until credits run out. One purchase
+    ' per deliberate press is intended; an unintended burst is not.
+    now = CreateObject("roDateTime").AsSeconds()
+    if m.lastPurchaseAt <> invalid and now = m.lastPurchaseAt
+        setStatus("One purchase at a time - press OK again.")
+        return
+    end if
+    m.lastPurchaseAt = now
+
     item = m.catalog[m.selectedIndex]
     lvl = levelFor(item.key)
 
