@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AutomationTab" extends="Group">
+    <children>
+        <Label id="title" text="=== AUTOMATION RULES ===" translation="[100,20]" font="font:MediumSystemFont" color="0x00FF41FF" />
+
+        <Label id="instructions" text="Press OK to add new rule. Use up/down to select a rule, right to delete."
+               translation="[100,60]" font="font:TinySystemFont" color="0x88FF88FF" wrap="true" width="1500" />
+
+        <Label id="ruleList" text="No rules installed." translation="[100,100]" font="font:SystemFont" color="0xCCFFCC" wrap="true" width="1500" />
+    </children>
+
+    <script type="text/brightscript" uri="pkg:/components/AutomationTab.brs" />
+</component>

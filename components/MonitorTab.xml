@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="MonitorTab" extends="Group">
+    <children>
+        <Label id="title" text="=== RESOURCE MONITOR ===" translation="[100,20]" font="font:MediumSystemFont" color="0x00FF41FF" />
+
+        <Label id="powerLabel" text="Power:" translation="[100,80]" font="font:SystemFont" color="0xFFFFFF" />
+        <Rectangle id="powerBarBg" translation="[300,75]" width="400" height="30" color="0x333333FF" />
+        <Rectangle id="powerBarFill" translation="[300,75]" width="0" height="30" color="0x00FF41FF" />
+
+        <Label id="heatLabel" text="Heat:" translation="[100,140]" font="font:SystemFont" color="0xFFFFFF" />
+        <Rectangle id="heatBarBg" translation="[300,135]" width="400" height="30" color="0x333333FF" />
+        <Rectangle id="heatBarFill" translation="[300,135]" width="0" height="30" color="0xFF4444FF" />
+
+        <Label id="throughputLabel" text="Throughput:" translation="[100,200]" font="font:SystemFont" color="0xFFFFFF" />
+        <Rectangle id="throughputBarBg" translation="[300,195]" width="400" height="30" color="0x333333FF" />
+        <Rectangle id="throughputBarFill" translation="[300,195]" width="0" height="30" color="0xFFAA44FF" />
+
+        <Label id="creditsLabel" text="Credits:" translation="[100,260]" font="font:SystemFont" color="0x00FF41FF" />
+    </children>
+
+    <script type="text/brightscript" uri="pkg:/components/MonitorTab.brs" />
+</component>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+    <children>
+        <Rectangle width="1920" height="1080" color="0x000000FF" />
+
+        <Label id="tabMonitor" text="MONITOR" translation="[100,30]" font="font:MediumSystemFont" color="0x00FF41FF" />
+        <Label id="tabAuto" text="AUTOMATION" translation="[400,30]" font="font:MediumSystemFont" color="0x44FF44FF" />
+        <Label id="tabNodes" text="NODES" translation="[800,30]" font="font:MediumSystemFont" color="0x44FF44FF" />
+        <Label id="tabLogs" text="LOGS" translation="[1100,30]" font="font:MediumSystemFont" color="0x44FF44FF" />
+
+        <Group id="tabContainer" translation="[0,80]" />
+
+        <Label id="footer" text="Credits: 100 | Power: 50/100 | Heat: 30/100 | Throughput: 10"
+               translation="[100,980]" font="font:SmallSystemFont" color="0x00AA55FF" />
+    </children>
+
+    <interface>
+        <field id="activeTab" type="integer" value="0" onChange="onTabChange" />
+        <field id="credits" type="integer" value="100" />
+        <field id="power" type="integer" value="50" />
+        <field id="heat" type="integer" value="30" />
+        <field id="throughput" type="integer" value="10" />
+        <field id="rules" type="array" />
+        <field id="nodesUnlocked" type="integer" value="1" />
+        <field id="logEntries" type="array" />
+    </interface>
+
+    <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+</component>

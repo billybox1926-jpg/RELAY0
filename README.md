@@ -1,109 +1,115 @@
-# OSS Repository Template
+# RELAY-0
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
+An idle strategy/simulation game for Roku — you inherit an abandoned autonomous server farm and keep it running. Optimize throughput, manage heat and power, install automation rules, respond to intrusions, and slowly expand while piecing together what happened to the previous admin.
 
-A reusable, professional baseline for open source repositories.
+**For couch + remote + popcorn.** No mouse, no keyboard. D-pad and OK button only.
 
-Use this template when you want clean OSS defaults, modular architecture conventions, reusable DevEx, and lightweight automation without locking a new project to one language or framework.
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## What is included
+## What it is
 
-- Repository health files: `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`
-- GitHub collaboration scaffolding: issue templates, pull request template, and `CODEOWNERS`
-- Modular project structure: `core/`, `providers/`, `plugins/`, `config/`, `scripts/`, and `tests/`
-- Reusable documentation for standards, architecture, DevEx, setup, and repository settings
-- Baseline repository config: `.editorconfig`, `.gitattributes`, and `.gitignore`
-- Generic CI, release, bootstrap, validation, and hygiene automation
+RELAY-0 is a turnable, epoch-based simulation inspired by retro terminal dashboards and haunted infrastructure. The game runs at TV scale (1920×1080) using Roku SceneGraph, with all UI rendered as Labels and Rectangles — no sprites, no 3D, no heavy rendering. It is designed to run on modest hardware (Roku Express and up).
 
-## Quick start
+**Core loop:**
 
-1. Click **Use this template** on GitHub.
-2. Rename the repository and update project-specific fields.
-3. Review the documentation map below.
-4. Confirm or replace `LICENSE` for your legal requirements.
-5. Update contacts in `SECURITY.md`, `CODEOWNERS`, and template placeholders.
-6. Copy `config/.env.example` if runtime configuration is needed.
-7. Review `docs/REPOSITORY_SETUP.md`, then enable branch protection and required status checks.
+- Monitor power, heat, throughput, and credits.
+- Install simple if-then automation rules (for example, "if heat > 70, reduce heat").
+- Overclock or repair individual nodes, unlock more nodes.
+- Respond to events: intrusions, thermal spikes, packet storms, ghost signals.
+- Close the app, walk away, come back — the simulation advances while you were away using epoch-based save/load.
 
-## Documentation map
+**Theme:** abandoned infrastructure, slow decay, quiet autonomy. The fiction embraces your absence.
 
-| Need | Start here |
+## Controls
+
+| Button | Action |
 | --- | --- |
-| Local setup and CI customization | `docs/developer-setup.md` |
-| Developer workflow, validation, debugging, and coding standards | `docs/DEVEX.md` |
-| Modular architecture conventions | `docs/ARCHITECTURE.md` |
-| Concrete `core -> providers -> plugins` walkthrough | `docs/examples/MODULAR_REFERENCE.md` |
-| Branch, commit, label, milestone, and release standards | `docs/REPOSITORY_STANDARDS.md` |
-| GitHub repository settings, branch protection, and merge/release setup | `docs/REPOSITORY_SETUP.md` |
-| Contribution expectations | `CONTRIBUTING.md` |
-| Security reporting | `SECURITY.md` |
+| Left / Right | Switch tabs (Monitor, Automation, Nodes, Logs) |
+| Up / Down | Navigate within a tab (rule list, node list) |
+| OK | Select / activate / open dialog |
+| Back (optional) | Usually handled by Scene default behavior |
 
-## Repository layout
+Tabs:
 
-```text
-.github/
-  ISSUE_TEMPLATE/
-  workflows/
-  PULL_REQUEST_TEMPLATE.md
-  CODEOWNERS
-core/
-providers/
-plugins/
-config/
-  .env.example
-docs/
-  ARCHITECTURE.md
-  DEVEX.md
-  REPOSITORY_SETUP.md
-  REPOSITORY_STANDARDS.md
-  developer-setup.md
-  examples/
-    MODULAR_REFERENCE.md
-scripts/
-  bootstrap.sh
-  hygiene.sh
-  validate.sh
-tests/
-CHANGELOG.md
-CODE_OF_CONDUCT.md
-CONTRIBUTING.md
-LICENSE
-SECURITY.md
+- **Monitor** — live resource bars and credit count.
+- **Automation** — list and manage if-then rules.
+- **Nodes** — overclock, repair, expand the node farm.
+- **Logs** — scroll through the system event log.
+
+## Requirements
+
+- A Roku device (HD-resolution models and up).
+- Developer mode enabled on the Roku.
+- A zip tool and a desktop browser for sideloading.
+
+## Getting started (dev)
+
+1. Enable developer mode on your Roku: press **Home** 3×, **Up** 2×, **Right**, **Left**, **Right**, **Left**, **Right**. Note the IP and set a password.
+2. Clone this repo and open the `RELAY0` folder.
+3. Zip the contents so `manifest` is at the root of the zip.
+4. Open `http://<your-roku-ip>` in a browser and upload the zip.
+5. Launch RELAY-0 from the Roku home screen.
+
+For a first run you can use the placeholder icon; a real 512×512 PNG can be added later under `pkg:/images/icon_hd.png`.
+
+## Project structure
+
+```
+RELAY0/
+├── manifest                  # Channel manifest (title, version, icon)
+├── source/
+│   └── main.brs             # Entry point: creates the Roku Scene
+└── components/
+    ├── MainScene.xml        # Root scene: tab bar, footer, global state
+    ├── MainScene.brs        # Save/load, epoch sim, event timer, rules processing
+    ├── MonitorTab.xml       # Resource bars UI
+    ├── MonitorTab.brs
+    ├── AutomationTab.xml    # Rule list UI
+    ├── AutomationTab.brs    # Rule add/delete, dialog-based rule builder
+    ├── NodesTab.xml         # Node overclock/repair/expand UI
+    ├── NodesTab.brs
+    ├── LogsTab.xml          # Event log display
+    └── LogsTab.brs
 ```
 
-## Automation
+## State and persistence
 
-- `.github/workflows/ci.yml` runs the reusable quality workflow.
-- `.github/workflows/reusable-quality.yml` provides configurable hygiene, format, lint, and test checks.
-- `.github/workflows/release.yml` provides release automation scaffolding.
-- `bash scripts/bootstrap.sh` supports local setup.
-- `bash scripts/hygiene.sh` runs stack-agnostic repository checks.
-- `bash scripts/validate.sh` runs hygiene first, then project-specific checks when configured.
+The game uses `roRegistry` to persist credits, resources, rules, logs, and last-save timestamp. On launch it calculates the elapsed epoch delta and applies passive income/decay in bulk, then appends a "while you were away" note to the log.
 
-## Repository settings
+## Automation rules
 
-Recommended GitHub settings are documented in `docs/REPOSITORY_SETUP.md`.
+Rules are stored as a simple array of `{ condition, action, target }` objects. Conditions currently include:
 
-At minimum, review:
+- `power < 30`
+- `heat > 70`
+- `throughput < 20`
 
-- default branch protection
-- required status checks
-- allowed merge methods
-- release workflow expectations
+Actions:
 
-## Versioning and releases
+- `boost_power`
+- `reduce_heat`
+- `earn_credits`
 
-Use [Semantic Versioning](https://semver.org/) and keep a human-readable `CHANGELOG.md`.
+Rules are processed periodically by the main event timer as well as on manual triggers.
 
-- **MAJOR**: incompatible API or behavior changes.
-- **MINOR**: backward-compatible functionality.
-- **PATCH**: backward-compatible fixes.
+## Building from source
 
-## Suggested next steps
+This is a BrightScript/SceneGraph project. There is no bundled Node.js or Python build pipeline yet. If you want linting or automated packaging later, the repo is structured to add it — for example, BrighterScript (`bsc`) or `roku-deploy` can be added under `scripts/` and wired into CI.
 
-- Enable or customize the workflow commands for your stack.
-- Fill the modular folders with project-specific implementation code.
-- Add project-specific architecture and operations notes under `docs/`.
-- Configure release automation if you publish artifacts.
+## License
+
+MIT — see `LICENSE`.
+
+## Contributing
+
+See `CONTRIBUTING.md`.
+
+## Security
+
+See `SECURITY.md`.
+
+## Credits
+
+RELAY-0 is a solo Roku channel experiment. The abandoned-infrastructure aesthetic, idle simulation, and epoch-based resume are the core design ideas.
+
+See `CHANGELOG.md` for version history.

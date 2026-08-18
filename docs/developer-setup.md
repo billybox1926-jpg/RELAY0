@@ -1,84 +1,77 @@
 # Developer Setup
 
-This guide provides generic onboarding defaults intended for template-based repositories.
+This guide is for working on RELAY-0, a Roku BrightScript / SceneGraph idle game.
 
-For broader contributor workflow, dependency, debugging, validation, and coding standards, see `docs/DEVEX.md`.
+If you are just playing the game, you only need the sideload steps in the README. This page is for people editing the channel.
 
 ## 1) Prerequisites
 
-- Git 2.40+
-- Bash or another POSIX-compatible shell for helper scripts
-- A language runtime/toolchain for your project such as Node, Python, Go, Rust, or similar
-- A package manager such as npm, pnpm, pip, poetry, go, or cargo
+- Git
+- A desktop machine for editing BrightScript/SceneGraph files
+- A Roku device with developer mode enabled
+- A zip tool for packaging the channel
 
-## 2) Bootstrap locally
+There is no required Node.js, Python, or Rust toolchain for the current prototype.
+
+## 2) Get the code
 
 ```bash
 git clone <your-repo-url>
-cd <your-repo>
-bash scripts/bootstrap.sh
+cd RELAY0
 ```
 
-If your repository is not Node.js based, adapt `scripts/bootstrap.sh` to your stack and keep command names consistent with CI.
+## 3) Package and sideload
 
-If the project needs runtime configuration, copy `config/.env.example` to your local environment file and replace placeholder values locally.
+1. Open developer mode on your Roku and note the IP and password.
+2. Zip the contents of the `RELAY0` folder so `manifest` is at the root of the zip.
+3. Upload the zip at `http://<your-roku-ip>`.
+4. Launch RELAY-0 from the Roku home screen.
 
-## 3) Recommended task contract
+For a first test, a placeholder icon is acceptable. A real 512×512 PNG can be added later under `pkg:/images/icon_hd.png`.
 
-To keep automation portable, define task commands with predictable names:
+## 4) Editing the channel
 
-- `format:check` — formatting validation
-- `lint` — static analysis/linting
-- `test` — automated tests
+The main code areas are:
 
-This template's reusable workflow can call any shell command, but these names improve discoverability.
+- `manifest` — channel metadata and version
+- `source/main.brs` — entry point
+- `components/` — SceneGraph scenes and tabs
 
-## 4) Local validation
+After editing, re-zip and re-sideload.
 
-Run the reusable validation helper before opening a PR:
+## 5) Manual testing checklist
 
-```bash
-bash scripts/validate.sh
-```
+Before opening a PR, test the main player paths:
 
-Adapt this script as the project adopts a specific language stack.
+1. Tab switching with left/right.
+2. Within-tab navigation with up/down/OK.
+3. Adding and deleting automation rules.
+4. Overclock, repair, and node expand.
+5. Random events showing up in logs.
+6. Closing and reopening the channel, then checking the "while you were away" summary.
 
-## 5) CI customization
+## 6) Local helper scripts
 
-The repository ships with:
+The repo includes generic helper scripts under `scripts/`:
 
-- `.github/workflows/reusable-quality.yml` as the reusable workflow
-- `.github/workflows/ci.yml` as the default entry workflow
-- `.github/workflows/release.yml` for release PR and tag automation
+- `bash scripts/hygiene.sh` — repo hygiene checks
+- `bash scripts/validate.sh` — hygiene plus project-specific checks
+- `bash scripts/bootstrap.sh` — stack-specific bootstrap helper
 
-In `ci.yml`, enable checks by setting:
+These are not BrightScript build tools. They exist for repo hygiene and may be adapted later for packaging or lint helpers.
 
-- `setup-node: true` for JS/TS projects
-- `run-format-check: true`
-- `run-lint: true`
-- `run-test: true`
+## 7) CI and workflow files
 
-Then optionally override commands:
+CI lives in `.github/workflows/`. The current workflows are reusable-quality-oriented and may need updating as the project gains BrightScript-specific tooling.
 
-```yaml
-with:
-  setup-node: true
-  format-command: npm run format:check
-  lint-command: npm run lint
-  test-command: npm test
-```
-
-## 6) Branch and PR workflow
+## 8) Branch and PR workflow
 
 1. Create a branch from `main`.
-2. Run local validation commands before opening a PR.
-3. Open a focused PR and include context for reviewers.
-4. Merge only when CI checks pass.
+2. Make changes.
+3. Sideload and test.
+4. Open a focused PR with context for reviewers.
+5. Merge only when the manual checks above pass.
 
-## 7) Lightweight automation standards
+## 9) Save format caution
 
-- Keep workflows minimal and composable.
-- Prefer reusable workflows over duplicated YAML.
-- Avoid stack-specific assumptions in template defaults.
-- Keep commands configurable through workflow inputs.
-- Fail fast in CI and keep logs clear.
+Save data is stored in `roRegistry` inside `MainScene.brs`. If a PR changes what is saved, update both load and save in the same PR and note it in the PR description.

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="NodesTab" extends="Group">
+    <children>
+        <Label id="title" text="=== NODE MANAGEMENT ===" translation="[100,20]" font="font:MediumSystemFont" color="0x00FF41FF" />
+
+        <Label id="nodeInfo" text="Primary Node [0]" translation="[100,80]" font="font:SystemFont" color="0xFFFFFF" />
+        <Label id="overclockBtn" text="[overclock] - Costs 30 credits, +10 throughput, +15 heat" translation="[100,130]" font="font:SystemFont" color="0xAAFFAA" />
+        <Label id="repairBtn" text="[repair] - Costs 20 credits, resets heat to 30" translation="[100,180]" font="font:SystemFont" color="0xAAFFAA" />
+        <Label id="expandBtn" text="[expand] - Unlock new node (500 credits)" translation="[100,230]" font="font:SystemFont" color="0xFFFF99" />
+
+        <Label id="statusText" text="" translation="[100,300]" font="font:SystemFont" color="0x00FF41FF" />
+    </children>
+
+    <script type="text/brightscript" uri="pkg:/components/NodesTab.brs" />
+</component>
