@@ -1,0 +1,83 @@
+name: Roku Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: BrightScript / SceneGraph validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # hygiene.sh uses `git grep`, which needs real history present.
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Show environment
+        run: |
+          echo "bash:    $BASH_VERSION"
+          python3 --version
+          git --version
+
+      - name: Validate (hygiene + manifest + BrightScript/SceneGraph)
+        run: bash scripts/validate.sh
+
+      - name: Verify sideload package can be assembled
+        run: |
+          python3 - <<'PY'
+          import os, zipfile
+
+          required = [
+              "manifest",
+              "source/main.brs",
+          ]
+          missing = [p for p in required if not os.path.isfile(p)]
+          if missing:
+              raise SystemExit(f"missing required package files: {missing}")
+
+          files = list(required)
+          for name in sorted(os.listdir("components")):
+              if name.endswith((".brs", ".xml")):
+                  files.append(f"components/{name}")
+
+          # Every .xml must have a matching .brs and vice versa.
+          stems = {}
+          for f in files:
+              if f.startswith("components/"):
+                  stem, ext = os.path.splitext(os.path.basename(f))
+                  stems.setdefault(stem, set()).add(ext)
+          for stem, exts in sorted(stems.items()):
+              if exts != {".brs", ".xml"}:
+                  raise SystemExit(
+                      f"component '{stem}' is incomplete, has only: {sorted(exts)}"
+                  )
+
+          out = "RELAY0-ci.zip"
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+              for f in files:
+                  z.write(f)
+          size = os.path.getsize(out)
+          print(f"packaged {len(files)} files -> {out} ({size} bytes)")
+          if size < 1000:
+              raise SystemExit("package suspiciously small")
+          PY
+
+      - name: Upload sideload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay0-sideload-zip
+          path: RELAY0-ci.zip
+          if-no-files-found: error
+          retention-days: 14

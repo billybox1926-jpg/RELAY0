@@ -1,18 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# RELAY-0 validation entry point.
+#
+# Local usage:
+#   bash scripts/validate.sh
+#
+# Requires: bash, git, python3 (3.8+). No Node.js or proprietary Roku
+# tooling needed. This is the same command CI runs.
+
+echo "==> Repository hygiene + Roku manifest/layout checks"
 bash scripts/hygiene.sh
 
+echo
+echo "==> BrightScript / SceneGraph validation"
+python3 scripts/validate_brightscript.py
+
+echo
 if [[ -f package.json ]]; then
   if command -v npm >/dev/null 2>&1; then
+    echo "==> Node checks (package.json present)"
     npm run format:check --if-present
     npm run lint --if-present
     npm test --if-present
   else
-    echo "npm is not installed; skipping Node validation."
+    echo "npm not installed; skipping optional Node validation."
   fi
-else
-  echo "No package.json found; add project-specific validation commands here as the template is adopted."
 fi
 
+echo
 echo "Validation complete."
