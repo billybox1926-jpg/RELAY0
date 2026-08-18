@@ -1,15 +1,53 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="NodesTab" extends="Group">
     <children>
-        <Label id="title" text="=== NODE MANAGEMENT ===" translation="[100,20]" font="font:MediumSystemFont" color="0x00FF41FF" />
+        <!-- Section Title -->
+        <Label id="title" text="[ NODE MANAGEMENT ]"
+               translation="[60, 20]" font="font:MediumBoldSystemFont" color="0x00FF41FF" />
+        <Rectangle translation="[60, 44]" width="1160" height="1" color="0x00FF4140" />
 
-        <Label id="nodeInfo" text="Primary Node [0]" translation="[100,80]" font="font:SystemFont" color="0xFFFFFF" />
-        <Label id="overclockBtn" text="[overclock] - Costs 30 credits, +10 throughput, +15 heat" translation="[100,130]" font="font:SystemFont" color="0xAAFFAA" />
-        <Label id="repairBtn" text="[repair] - Costs 20 credits, resets heat to 30" translation="[100,180]" font="font:SystemFont" color="0xAAFFAA" />
-        <Label id="expandBtn" text="[expand] - Unlock new node (500 credits)" translation="[100,230]" font="font:SystemFont" color="0xFFFF99" />
+        <!-- Current Node Info -->
+        <Label id="nodeInfo" text="Primary Node [0]"
+               translation="[80, 65]" font="font:MediumSystemFont" color="#FFFFFF" />
+        <Label id="nodeNav" text="UP/DOWN: Browse Nodes  |  OK: Node Actions"
+               translation="[80, 95]" font="font:SmallSystemFont" color="#88CC88FF" />
 
-        <Label id="statusText" text="" translation="[100,300]" font="font:SystemFont" color="0x00FF41FF" />
+        <!-- Separator -->
+        <Rectangle translation="[60, 125]" width="1160" height="1" color="0x00FF4120" />
+
+        <!-- Node Details Panel -->
+        <Rectangle id="nodePanel" translation="[60, 140]" width="1160" height="180" color="#0D150D" />
+        <Label id="nodeName" text="NODE 0 — Primary Relay"
+               translation="[80, 155]" font="font:MediumBoldSystemFont" color="#00FF41FF" />
+        <Label id="nodeStatus" text="Status: ONLINE"
+               translation="[80, 185]" font="font:SystemFont" color="#88FF88FF" />
+        <Label id="nodeStats" text="No stats available."
+               translation="[80, 215]" font="font:SystemFont" color="#AACCAAFF"
+               wrap="true" width="1100" height="90" />
+
+        <!-- Separator -->
+        <Rectangle translation="[60, 340]" width="1160" height="1" color="0x00FF4120" />
+
+        <!-- Available Actions -->
+        <Label id="actionsTitle" text="[ AVAILABLE ACTIONS ]"
+               translation="[80, 360]" font="font:MediumSystemFont" color="#00FF41FF" />
+
+        <Label id="action1" text="[1] OVERCLOCK — 30 credits, +10 throughput, +15 heat"
+               translation="[80, 395]" font="font:SystemFont" color="#AAFFAAFF" />
+        <Label id="action2" text="[2] REPAIR — 20 credits, reset heat to 30"
+               translation="[80, 425]" font="font:SystemFont" color="#AAFFAAFF" />
+        <Label id="action3" text="[3] EXPAND — 500 credits, unlock new relay node"
+               translation="[80, 455]" font="font:SystemFont" color="#FFFF99FF" />
+        <Label id="action4" text="[4] UPGRADE — 200 credits, +1 upgrade level (income multiplier)"
+               translation="[80, 485]" font="font:SystemFont" color="#99CCFFFF" />
+        <Label id="action5" text="[5] RESTORE HEALTH — 150 credits, +30 network health"
+               translation="[80, 515]" font="font:SystemFont" color="#88FFAAFF" />
+
+        <!-- Status Message -->
+        <Rectangle translation="[60, 555]" width="1160" height="1" color="0x00FF4120" />
+        <Label id="statusText" text="Select an action with OK."
+               translation="[80, 575]" font="font:SystemFont" color="#00FF41FF"
+               wrap="true" width="1100" height="60" />
     </children>
-
     <script type="text/brightscript" uri="pkg:/components/NodesTab.brs" />
 </component>

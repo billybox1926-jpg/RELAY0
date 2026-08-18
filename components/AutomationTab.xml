@@ -1,13 +1,26 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="AutomationTab" extends="Group">
     <children>
-        <Label id="title" text="=== AUTOMATION RULES ===" translation="[100,20]" font="font:MediumSystemFont" color="0x00FF41FF" />
+        <!-- Section Title -->
+        <Label id="title" text="[ AUTOMATION RULES ]"
+               translation="[60, 20]" font="font:MediumBoldSystemFont" color="0x00FF41FF" />
+        <Rectangle translation="[60, 44]" width="1160" height="1" color="0x00FF4140" />
 
-        <Label id="instructions" text="Press OK to add new rule. Use up/down to select a rule, right to delete."
-               translation="[100,60]" font="font:TinySystemFont" color="0x88FF88FF" wrap="true" width="1500" />
+        <!-- Instructions -->
+        <Label id="instructions" text="OK: Add Rule  |  UP/DOWN: Select  |  RIGHT: Delete Selected"
+               translation="[60, 58]" font="font:SmallSystemFont" color="#88CC88FF" />
 
-        <Label id="ruleList" text="No rules installed." translation="[100,100]" font="font:SystemFont" color="0xCCFFCC" wrap="true" width="1500" />
+        <!-- Rule list display area -->
+        <Label id="ruleList" text="No rules installed."
+               translation="[60, 90]" font="font:SystemFont" color="#CCFFCCFF"
+               wrap="true" width="1160" height="380" />
+
+        <!-- Bottom info -->
+        <Rectangle translation="[60, 490]" width="1160" height="1" color="0x00FF4120" />
+        <Label id="ruleInfo" text="Rules fire automatically every 30 seconds when conditions are met."
+               translation="[60, 505]" font="font:SmallSystemFont" color="#669966FF" />
+        <Label id="ruleInfo2" text="Max 10 rules. Conditions: Power/Heat/Throughput/Health thresholds."
+               translation="[60, 530]" font="font:SmallSystemFont" color="#669966FF" />
     </children>
-
     <script type="text/brightscript" uri="pkg:/components/AutomationTab.brs" />
 </component>
