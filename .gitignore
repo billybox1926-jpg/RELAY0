@@ -1,47 +1,58 @@
-# OS-generated files
-.DS_Store
-Thumbs.db
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Editor and IDE directories
-.vscode/
-.idea/
+# Dependencies
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+*.env.*
+
+# Logs and temp files
+*.log
+*.tmp
 *.swp
 *.swo
 
-# Logs
-*.log
-logs/
+# Editors
+.vscode/
+.idea/
 
-# Environment variables and local config
-.env
-.env.*
-*.local
+# Coverage
+coverage/
+htmlcov/
+.coverage
 
-# Dependency directories
-node_modules/
-.vendor/
-
-# Build and distribution artifacts
+# Distribution / packaging
 dist/
 build/
-out/
-coverage/
-*.tmp
-*.temp
+*.tar.gz
+*.whl
+*.egg
+*.egg-info/
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
+# OS generated files
+.DS_Store
+Thumbs.db
 
-# Java
-*.class
+# MyPy
+.mypy_cache/
 
-# Go
-bin/
+# PyTest
+.pytest_cache/
 
-# Rust
+# Gradle
+.gradle/
 target/
 
 # Package manager lockfiles for library templates (optional)
@@ -49,5 +60,27 @@ target/
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+# Roku sideload build artifacts
 RELAY0.zip
 buildstamp.txt
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
