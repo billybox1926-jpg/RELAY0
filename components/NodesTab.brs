@@ -136,10 +136,16 @@ sub showActionDialog()
 end sub
 
 sub onActionChosen(event)
+    if m.dialogBusy = true then return
+    m.dialogBusy = true
+
     dialog = m.top.getScene().dialog
-    if dialog = invalid then return
+    if dialog = invalid
+        m.dialogBusy = false
+        return
+    end if
     idx = dialog.buttonSelected
-    m.top.getScene().dialog = invalid
+    closeDialog()
     if idx = -1 then return
 
     cancelIdx = m.pendingButtons.count() - 1
@@ -265,3 +271,17 @@ function formatFloat(val, decimals) as string
     if frac.len() > decimals then frac = frac.left(decimals)
     return whole + "." + frac
 end function
+
+' Detach the dialog observer and release the node. Setting scene.dialog to
+' invalid alone drops the reference without unsubscribing, leaving a live
+' subscription on a node whose surrounding state has been cleared.
+sub closeDialog()
+    scene = m.top.getScene()
+    if scene <> invalid
+        dlg = scene.dialog
+        if dlg <> invalid then dlg.unobserveField("buttonSelected")
+        scene.dialog = invalid
+    end if
+    ' Release the re-entrancy guard so the next dialog can open.
+    m.dialogBusy = false
+end sub

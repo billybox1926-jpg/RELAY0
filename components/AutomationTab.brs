@@ -111,10 +111,16 @@ sub showRuleBuilder()
 end sub
 
 sub onConditionSelected(event)
+    if m.dialogBusy = true then return
+    m.dialogBusy = true
+
     dialog = m.top.getScene().dialog
-    if dialog = invalid then return
+    if dialog = invalid
+        m.dialogBusy = false
+        return
+    end if
     idx = dialog.buttonSelected
-    m.top.getScene().dialog = invalid
+    closeDialog()
 
     ' Cancel / dismiss: leave the rule list untouched
     if m.conditionKeys = invalid then return
@@ -150,11 +156,17 @@ sub onConditionSelected(event)
 end sub
 
 sub onActionSelected(event)
+    if m.dialogBusy = true then return
+    m.dialogBusy = true
+
     dialog = m.top.getScene().dialog
-    if dialog = invalid then return
+    if dialog = invalid
+        m.dialogBusy = false
+        return
+    end if
     idx = dialog.buttonSelected
     condition = m.pendingCondition
-    m.top.getScene().dialog = invalid
+    closeDialog()
     m.pendingCondition = invalid
 
     ' Cancel / dismiss / lost condition: leave the rule list untouched
@@ -182,3 +194,17 @@ function onEvent(dummy = invalid as dynamic)
     updateRuleList()
     return invalid
 end function
+
+' Detach the dialog observer and release the node. Setting scene.dialog to
+' invalid alone drops the reference without unsubscribing, leaving a live
+' subscription on a node whose surrounding state has been cleared.
+sub closeDialog()
+    scene = m.top.getScene()
+    if scene <> invalid
+        dlg = scene.dialog
+        if dlg <> invalid then dlg.unobserveField("buttonSelected")
+        scene.dialog = invalid
+    end if
+    ' Release the re-entrancy guard so the next dialog can open.
+    m.dialogBusy = false
+end sub

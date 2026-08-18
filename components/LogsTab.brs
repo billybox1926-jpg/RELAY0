@@ -83,10 +83,16 @@ sub clearLogs()
 end sub
 
 sub onClearConfirm(event)
+    if m.dialogBusy = true then return
+    m.dialogBusy = true
+
     dialog = m.top.getScene().dialog
-    if dialog = invalid then return
+    if dialog = invalid
+        m.dialogBusy = false
+        return
+    end if
     idx = dialog.buttonSelected
-    m.top.getScene().dialog = invalid
+    closeDialog()
 
     if idx = 0
         m.parentScene.logEntries = []
@@ -94,4 +100,18 @@ sub onClearConfirm(event)
         m.parentScene.callFunc("addLog", "Logs cleared by operator.")
         refresh()
     end if
+end sub
+
+' Detach the dialog observer and release the node. Setting scene.dialog to
+' invalid alone drops the reference without unsubscribing, leaving a live
+' subscription on a node whose surrounding state has been cleared.
+sub closeDialog()
+    scene = m.top.getScene()
+    if scene <> invalid
+        dlg = scene.dialog
+        if dlg <> invalid then dlg.unobserveField("buttonSelected")
+        scene.dialog = invalid
+    end if
+    ' Release the re-entrancy guard so the next dialog can open.
+    m.dialogBusy = false
 end sub

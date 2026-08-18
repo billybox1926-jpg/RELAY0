@@ -67,6 +67,9 @@ sub init()
     m.lastUpgradeCountsJson = ""
     m.creditRemainder = 0.0
     m.lastRulesFired = 0
+    m.tickCountIncome = 0
+    m.tickCountEvent = 0
+    m.bootEpoch = 0
 
     print "=== RELAY-0 v1.2 booting ==="
 
@@ -76,6 +79,7 @@ sub init()
     updateFooter()
     startEventTimer()
     startIncomeTimer()
+    m.bootEpoch = getCurrentEpoch()
     addLog("RELAY-0 terminal initialized. System online.")
     print "=== RELAY-0 ready. Rules: " + m.top.rules.count().toStr() + ", Logs: " + m.top.logEntries.count().toStr() + " ==="
 end sub
@@ -899,7 +903,44 @@ sub processRules()
 end sub
 
 ' ----- Event Timer (every 30s) -----
+' ----- Shutdown -----
+' Driven by main.brs setting m.top.shutdown on roSGScreenEvent close.
+' Stops every timer and performs a final unconditional save so a mutation
+' inside the 2s debounce window is not lost on exit.
+sub onShutdown()
+    if not m.top.shutdown then return
+    print "[shutdown] stopping timers and flushing save"
+    stopAllTimers()
+    flushSave()
+    print "[shutdown] complete"
+end sub
+
+sub stopAllTimers()
+    if m.incomeTimer <> invalid then m.incomeTimer.control = "stop"
+    if m.eventTimer <> invalid then m.eventTimer.control = "stop"
+    if m.saveTimer <> invalid then m.saveTimer.control = "stop"
+end sub
+
+' Instrumentation for the #10 soak test: prints observed callback counts
+' against elapsed wall time so a doubled tick rate is measurable rather
+' than inferred. Called from onIncomeTick every 4th tick (~60s).
+sub reportTickRates()
+    if m.bootEpoch = 0 then return
+    elapsed = getCurrentEpoch() - m.bootEpoch
+    if elapsed < 1 then return
+    expectedIncome = Int(elapsed / 15.0)
+    expectedEvent = Int(elapsed / 30.0)
+    print "[ticks] elapsed=" + Int(elapsed).toStr() + "s income=" + m.tickCountIncome.toStr() + "/~" + expectedIncome.toStr() + " event=" + m.tickCountEvent.toStr() + "/~" + expectedEvent.toStr()
+end sub
+
 sub startEventTimer()
+    ' Idempotency guard: creating a second repeating timer would double the
+    ' event rate. This should be unreachable (init() runs once) but the
+    ' warning makes a regression loud instead of silent.
+    if m.eventTimer <> invalid
+        print "[timer] WARNING startEventTimer() called twice; ignoring"
+        return
+    end if
     m.eventTimer = m.top.createChild("Timer")
     m.eventTimer.repeat = true
     m.eventTimer.duration = 30
@@ -908,6 +949,7 @@ sub startEventTimer()
 end sub
 
 sub onEventTimer()
+    m.tickCountEvent = m.tickCountEvent + 1
     processRules()
     ' Events are occasional flavour, not a constant beating.
     ' Skip entirely while the relay is already struggling so the
@@ -929,6 +971,10 @@ end sub
 
 ' ----- Income Timer (every 15s) -----
 sub startIncomeTimer()
+    if m.incomeTimer <> invalid
+        print "[timer] WARNING startIncomeTimer() called twice; ignoring"
+        return
+    end if
     m.incomeTimer = m.top.createChild("Timer")
     m.incomeTimer.repeat = true
     m.incomeTimer.duration = 15
@@ -937,6 +983,8 @@ sub startIncomeTimer()
 end sub
 
 sub onIncomeTick()
+    m.tickCountIncome = m.tickCountIncome + 1
+    if m.tickCountIncome mod 4 = 0 then reportTickRates()
     t = m.tune
     ' Pull m.top values into locals (m scope access is slower).
     throughput = m.top.throughput

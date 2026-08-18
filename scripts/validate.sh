@@ -25,6 +25,10 @@ echo "==> Save schema / migration tests"
 python3 scripts/test_save_schema.py
 
 echo
+echo "==> Timer / observer lifecycle tests"
+python3 scripts/test_timer_lifecycle.py
+
+echo
 if [[ -f package.json ]]; then
   if command -v npm >/dev/null 2>&1; then
     echo "==> Node checks (package.json present)"

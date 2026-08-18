@@ -1,7 +1,7 @@
 title=RELAY-0
 major_version=1
 minor_version=0
-build_version=24
+build_version=25
 splash_color=#001100
 splash_min_time=0
 requires_screen_resolution=hd

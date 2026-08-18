@@ -12,6 +12,7 @@
         <field id="upgradeLevel" type="integer" value="0" />
         <field id="networkHealth" type="integer" value="100" />
         <field id="upgradeCounts" type="assocarray" />
+        <field id="shutdown" type="boolean" value="false" onChange="onShutdown" />
         <function name="flushSave" />
         <function name="addLog" />
         <function name="applyResourceChanges" />
