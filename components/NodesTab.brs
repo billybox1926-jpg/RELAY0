@@ -31,7 +31,7 @@ sub updateUI()
     end if
 end sub
 
-function onKeyEvent(key as string, press as boolean) as boolean
+function handleKeyEvent(key as string, press as boolean) as boolean
     if not press then return false
     parent = m.parentScene
     if parent = invalid then return false
