@@ -75,6 +75,41 @@ without updating expectations fails the tests rather than drifting silently.
 Covers 30s / 60s / 5min / 8h absences, remainder carrying, clock anomalies,
 bounds, and equilibrium behaviour.
 
+`scripts/test_gameplay.py` — deterministic gameplay rule tests (248
+assertions) covering income ticks, resource caps and floors, automation
+conditions and ordering, random events, upgrade cost scaling, node actions,
+cross-system interactions, and an end-to-end scenario.
+
+`scripts/relay_constants.py` parses every balance value out of
+`components/*.brs` at run time — the `tuning()` table, upgrade catalog, rule
+actions and conditions, node action costs and effects, event deltas, resource
+clamp bounds, and both the rule and node caps. `scripts/relay_model.py`
+holds game *logic* only, never game *numbers*. Retuning the game therefore
+cannot leave the tests validating a stale second copy: either the invariants
+still hold against the new values, or they fail.
+
+### Simulated vs. device-only
+
+Deterministic tests cover the rules; they cannot cover the platform. What
+each side proves:
+
+| Verified by `bash scripts/validate.sh` | Requires a Roku device |
+|---|---|
+| Income formula, floors, and multipliers | That timers actually fire at 15s/30s |
+| Resource clamping at 0 and 100 | SceneGraph rendering and layout |
+| Automation conditions, ordering, re-evaluation, cap | Focus movement and D-pad routing |
+| Rule actions applying their documented deltas | Dialog open/cancel/confirm behaviour |
+| One batched UI refresh per rule batch | That a refresh actually repaints |
+| Event deltas, armor mitigation, struggling-state suppression | Registry read/write and `roRegistry` flush |
+| Upgrade cost scaling, exact deduction, max level | Real elapsed-time and clock behaviour |
+| Node action costs and effects, expansion cap | Channel install, boot, and crash-free launch |
+| Save sanitisation, migration, recovery | Shutdown flush on channel exit |
+| Timer/observer structural contracts | Actual callback rates over a soak |
+| Node cap agreement across gate, label, and log text | Anything visual |
+
+Device verification for each issue is recorded in its GitHub thread, with
+telnet output (`telnet <roku-ip> 8085`) as the evidence.
+
 CI additionally verifies that a sideload zip can be assembled, that every
 component has both a `.brs` and an `.xml`, and uploads the package as a
 build artifact.
