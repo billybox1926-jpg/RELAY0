@@ -188,10 +188,20 @@ and Monitor tab without switching tabs.
 
 ## Sideloading
 
+Build a package with the release script, which produces a byte-reproducible
+archive containing only the files the channel needs:
+
+```bash
+python3 scripts/build_package.py --verify --out RELAY0.zip
+```
+
 1. Enable developer mode on the Roku (Home ×3, Up ×2, Right, Left, Right, Left, Right).
 2. Note the device IP (Settings → Network → About).
-3. Build a zip containing `manifest`, `source/`, and `components/` at the archive root.
-4. Upload it at `http://<roku-ip>/` (user `rokudev`, plus your dev password).
+3. Upload `RELAY0.zip` at `http://<roku-ip>/` (user `rokudev`, plus your dev password).
+
+See `docs/RELEASE.md` for how the artifact is produced, why it reproduces
+across checkouts, how CI enforces that, and how to verify a published release
+artifact against source.
 
 Live debug output — including `print` statements and BrightScript crash
 backtraces — is on port 8085:

@@ -13,10 +13,49 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
 
     steps:
       - name: Release Please
+        id: release
         uses: googleapis/release-please-action@v4
         with:
           release-type: simple
           changelog-types: '[{"type":"feat","section":"Features","hidden":false},{"type":"fix","section":"Bug Fixes","hidden":false},{"type":"chore","section":"Maintenance","hidden":false}]'
+
+  # A GitHub Release previously carried no channel package at all: the only
+  # zip anywhere was a throwaway CI artifact. This attaches the deterministic
+  # package to the release, and records its sha256 so the published artifact
+  # can be matched against a local rebuild of the same tag.
+  attach-package:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the released commit
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate before packaging
+        run: bash scripts/validate.sh
+
+      - name: Build the deterministic package
+        run: |
+          set -euo pipefail
+          python3 scripts/build_package.py --verify --out RELAY0.zip
+          sha256sum RELAY0.zip | cut -d' ' -f1 > RELAY0.zip.sha256
+          echo "sha256: $(cat RELAY0.zip.sha256)"
+
+      - name: Attach package and checksum to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" RELAY0.zip RELAY0.zip.sha256 --clobber

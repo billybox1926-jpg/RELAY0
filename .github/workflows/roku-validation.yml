@@ -34,50 +34,62 @@ jobs:
       - name: Validate (hygiene + manifest + BrightScript/SceneGraph)
         run: bash scripts/validate.sh
 
-      - name: Verify sideload package can be assembled
+      - name: Build the sideload package deterministically
+        run: python3 scripts/build_package.py --verify --out RELAY0.zip --hashes
+
+      - name: Prove the package reproduces from a clean checkout
         run: |
+          set -euo pipefail
+          FIRST=$(sha256sum RELAY0.zip | cut -d' ' -f1)
+          echo "in-tree build: $FIRST"
+
+          # Copy only tracked sources into a pristine directory. `cp` does not
+          # preserve mtimes, which is exactly the condition that broke
+          # reproducibility before scripts/build_package.py normalised them.
+          rm -rf /tmp/clean && mkdir -p /tmp/clean/scripts
+          git archive HEAD | tar -x -C /tmp/clean
+          cp scripts/build_package.py /tmp/clean/scripts/
+          ( cd /tmp/clean && python3 scripts/build_package.py --out RELAY0.zip >/dev/null )
+          SECOND=$(sha256sum /tmp/clean/RELAY0.zip | cut -d' ' -f1)
+          echo "clean checkout: $SECOND"
+
+          if [ "$FIRST" != "$SECOND" ]; then
+            echo "::error::package is not reproducible across checkouts"
+            exit 1
+          fi
+          echo "reproducible: identical sha256 from both builds"
+          echo "PACKAGE_SHA256=$FIRST" >> "$GITHUB_ENV"
+
+      - name: Assert no repository files leaked into the package
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
-          import os, zipfile
+          import zipfile, re, sys
 
-          required = [
-              "manifest",
-              "source/main.brs",
-          ]
-          missing = [p for p in required if not os.path.isfile(p)]
-          if missing:
-              raise SystemExit(f"missing required package files: {missing}")
+          names = zipfile.ZipFile("RELAY0.zip").namelist()
+          bad = [n for n in names if re.search(
+              r"(^|/)\.|\.py$|\.md$|\.sh$|\.zip$|__pycache__|buildstamp", n)]
+          if bad:
+              print(f"::error::disallowed files in package: {bad}")
+              sys.exit(1)
 
-          files = list(required)
-          for name in sorted(os.listdir("components")):
-              if name.endswith((".brs", ".xml")):
-                  files.append(f"components/{name}")
+          # manifest must sit at the archive root, not inside a folder.
+          if "manifest" not in names:
+              print("::error::manifest is not at the package root")
+              sys.exit(1)
+          if "source/main.brs" not in names:
+              print("::error::source/main.brs missing from package")
+              sys.exit(1)
 
-          # Every .xml must have a matching .brs and vice versa.
-          stems = {}
-          for f in files:
-              if f.startswith("components/"):
-                  stem, ext = os.path.splitext(os.path.basename(f))
-                  stems.setdefault(stem, set()).add(ext)
-          for stem, exts in sorted(stems.items()):
-              if exts != {".brs", ".xml"}:
-                  raise SystemExit(
-                      f"component '{stem}' is incomplete, has only: {sorted(exts)}"
-                  )
-
-          out = "RELAY0-ci.zip"
-          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-              for f in files:
-                  z.write(f)
-          size = os.path.getsize(out)
-          print(f"packaged {len(files)} files -> {out} ({size} bytes)")
-          if size < 1000:
-              raise SystemExit("package suspiciously small")
+          print(f"package contents verified: {len(names)} file(s), no leakage")
+          for n in sorted(names):
+              print(f"  {n}")
           PY
 
       - name: Upload sideload package
         uses: actions/upload-artifact@v4
         with:
           name: relay0-sideload-zip
-          path: RELAY0-ci.zip
+          path: RELAY0.zip
           if-no-files-found: error
           retention-days: 14

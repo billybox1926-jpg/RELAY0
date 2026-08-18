@@ -33,6 +33,10 @@ echo "==> Gameplay rule tests (economy, automation, events, upgrades, nodes)"
 python3 scripts/test_gameplay.py
 
 echo
+echo "==> Release packaging tests (determinism, allowlist, structure)"
+python3 scripts/test_package.py
+
+echo
 if [[ -f package.json ]]; then
   if command -v npm >/dev/null 2>&1; then
     echo "==> Node checks (package.json present)"
