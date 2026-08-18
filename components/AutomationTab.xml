@@ -18,7 +18,7 @@
 
         <!-- Rule list display area -->
         <Label id="ruleList" text="No rules installed."
-               translation="[60, 90]" font="font:SystemFont" color="#CCFFCCFF"
+               translation="[60, 90]" font="font:SmallSystemFont" color="#CCFFCCFF"
                wrap="true" width="1160" height="380" />
 
         <!-- Bottom info -->

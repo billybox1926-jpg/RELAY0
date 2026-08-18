@@ -18,7 +18,7 @@
 
         <!-- Log Display Area -->
         <Label id="logDisplay" text="No logs yet."
-               translation="[60, 58]" font="font:SystemFont" color="#CCFFCCFF"
+               translation="[60, 58]" font="font:SmallSystemFont" color="#CCFFCCFF"
                wrap="true" width="1160" height="530" />
 
         <!-- Bottom Actions -->

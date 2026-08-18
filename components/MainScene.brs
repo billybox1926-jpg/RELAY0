@@ -1,23 +1,61 @@
 ' ============================================================
-' RELAY-0 - MainScene.brs  (Core Game Engine v1.1)
+' RELAY-0 - MainScene.brs  (Core Game Engine v1.2)
 ' ============================================================
-' v1.1 - Roku Platform Optimizations:
-'   - Cached roRegistrySection (avoid re-creating on every save)
-'   - Dirty-flag save throttling (debounced 2s timer instead of
-'     saving on every single event/rule/income tick)
-'   - Local variable optimization in onIncomeTick (avoid m scope
-'     in hot path per Roku perf best practice)
-'   - Telnet debug logging via print() for port 8085 console
-'   - Deduped addLog + processRules saves (no double-write)
-'   - Reduced FormatJson calls (only on rules/logs change, not
-'     every resource tick)
-'   - Guard against save during dialog (SceneGraph focus safety)
+' v1.2 - Rebalanced economy (homeostasis model):
+'   - Power/heat/throughput drift toward sustainable targets instead
+'     of draining one-way into an unrecoverable death spiral
+'   - Upgrades raise those targets, so investment is felt passively
+'   - Events are rarer, gentler, and suppressed while struggling
+'   - Health slowly self-repairs; damage only at true extremes
+'   - Save v3 migration rescues saves wedged at power=0/heat=100
+'   - All tuning lives in tuning() below - edit there, not inline
 ' ============================================================
 
+' ---- Central tuning table -------------------------------------
+' Every balance number lives here so the game can be retuned in one
+' place without hunting through the logic.
+function tuning() as object
+    return {
+        incomeBase:          6     ' credits per tick at 50 throughput, no upgrades
+        incomeFloor:         4     ' never earn less than this per tick
+        offlineRate:         12    ' credits per minute while away
+        offlineFloor:        6
+
+        powerBase:           70    ' idle power equilibrium
+        powerPerReactor:     5     ' each Reactor Shielding level
+        powerPerBattery:     4     ' each Capacitor Bank level
+        powerPerNode:        6     ' each extra node costs this much headroom
+        powerMin:            25    ' equilibrium never drops below this
+
+        heatBase:            30    ' idle heat equilibrium
+        heatPerCooling:      3     ' each Cryo Manifold level lowers it
+        heatMin:             10
+        heatDissipation:     4     ' base cooling per tick
+        heatCoolPerLevel:    2     ' extra cooling per Cryo level
+        heatPanicThreshold:  75    ' above this, fans shed extra heat
+        heatPanicBonus:      4
+
+        throughputBase:      45    ' idle throughput equilibrium
+        throughputPerBand:   5     ' each Bandwidth Expander level
+        throughputStarve:    15    ' below this power, throughput suffers
+        throughputPenalty:   3
+
+        healthRegen:         1     ' per tick self-repair
+        healthPerArmor:      2     ' armor levels add regen (integer divide)
+        healthHeatDamage:    90    ' heat above this damages health
+        healthPowerDamage:   5     ' power below this damages health
+
+        eventChance:         22    ' percent per 30s tick
+        eventChanceStruggle: 8     ' reduced while in trouble
+        settleMinutes:       30.0  ' offline blend fully settles after this
+    }
+end function
+
 sub init()
+    m.tune = tuning()
     m.top.setFocus(true)
     m.top.activeTab = 0
-    m.saveVersion = 2
+    m.saveVersion = 3
     m.lastSaveTime = invalid
     m.tabCount = 5
     m.incomeTimer = invalid
@@ -28,7 +66,7 @@ sub init()
     m.lastLogsJson = ""
     m.lastUpgradeCountsJson = ""
 
-    print "=== RELAY-0 v1.1 booting ==="
+    print "=== RELAY-0 v1.2 booting ==="
 
     loadGame()
     simulateWhileAway()
@@ -108,6 +146,17 @@ sub loadGame()
         end if
     end if
     if m.top.upgradeCounts = invalid then m.top.upgradeCounts = {}
+
+    ' Save migration: builds before v3 could leave a save wedged at
+    ' power=0 / heat=100 with no recovery path. Rescue those states once.
+    if saveVer < 3
+        if m.top.power < 30 then m.top.power = 60
+        if m.top.heat > 70 then m.top.heat = 30
+        if m.top.throughput < 30 then m.top.throughput = 45
+        if m.top.networkHealth < 50 then m.top.networkHealth = 80
+        m.saveVersion = 3
+        print "[loadGame] migrated save to v3 (rebalanced economy)"
+    end if
 
     print "[loadGame] credits=" + m.top.credits.toStr() + " power=" + m.top.power.toStr() + " heat=" + m.top.heat.toStr()
 end sub
@@ -225,43 +274,52 @@ sub simulateWhileAway()
     upgradeLevel = m.top.upgradeLevel
     power = m.top.power
     heat = m.top.heat
+    nodesUnlocked = m.top.nodesUnlocked
 
-    ' Passive income: base 10 credits/min, scaled by throughput and upgrade level
+    counts = m.top.upgradeCounts
+    if counts = invalid then counts = {}
+    reactorLvl = 0
+    batteryLvl = 0
+    coolingLvl = 0
+    bandwidthLvl = 0
+    if counts.doesExist("reactor") then reactorLvl = counts["reactor"]
+    if counts.doesExist("battery") then batteryLvl = counts["battery"]
+    if counts.doesExist("cooling") then coolingLvl = counts["cooling"]
+    if counts.doesExist("bandwidth") then bandwidthLvl = counts["bandwidth"]
+
+    ' Passive income while away, scaled by throughput and upgrade level
     throughputMult = throughput / 50.0
     upgradeMult = 1.0 + (upgradeLevel * 0.25)
-    creditRate = Cint(10 * throughputMult * upgradeMult)
-    if creditRate < 1 then creditRate = 1
+    creditRate = Cint(m.tune.offlineRate * throughputMult * upgradeMult)
+    if creditRate < m.tune.offlineFloor then creditRate = m.tune.offlineFloor
 
-    deltaCredits = Cint((creditRate * elapsedSeconds) / 60.0)
-    deltaPower = Cint(-(5 * elapsedSeconds) / 60.0)
-    deltaHeat = Cint((8 * elapsedSeconds) / 60.0)
-    deltaThroughput = Cint((3 * elapsedSeconds) / 60.0)
-    deltaHealth = Cint(-(2 * elapsedSeconds) / 60.0)
-
+    minutesAwayNum = elapsedSeconds / 60.0
+    deltaCredits = Cint(creditRate * minutesAwayNum)
     m.top.credits = m.top.credits + deltaCredits
-    m.top.power = clamp(power + deltaPower, 0, 100)
-    m.top.heat = clamp(heat + deltaHeat, 0, 100)
-    m.top.throughput = clamp(throughput + deltaThroughput, 0, 100)
-    m.top.networkHealth = clamp(m.top.networkHealth + deltaHealth, 0, 100)
-
     if m.top.credits < 0 then m.top.credits = 0
 
-    ' Overheating damage while away
-    if m.top.heat > 85
-        damage = Cint((m.top.heat - 85) * elapsedSeconds / 300.0)
-        m.top.networkHealth = clamp(m.top.networkHealth - damage, 0, 100)
-    end if
+    ' While away the relay settles toward its idle equilibrium rather
+    ' than draining to zero. Longer absences land closer to the target.
+    powerTarget = powerEquilibrium(reactorLvl, batteryLvl, nodesUnlocked)
+    heatTarget = heatEquilibrium(coolingLvl)
+    throughputTarget = throughputEquilibrium(bandwidthLvl)
 
-    ' Low power degrades throughput while away
-    if m.top.power < 10
-        loss = Cint((10 - m.top.power) * elapsedSeconds / 120.0)
-        m.top.throughput = clamp(m.top.throughput - loss, 0, 100)
-    end if
+    ' Blend current -> target; settleMinutes away is fully settled
+    blend = minutesAwayNum / m.tune.settleMinutes
+    if blend > 1.0 then blend = 1.0
+
+    m.top.power = clamp(Cint(power + (powerTarget - power) * blend), 0, 100)
+    m.top.heat = clamp(Cint(heat + (heatTarget - heat) * blend), 0, 100)
+    m.top.throughput = clamp(Cint(throughput + (throughputTarget - throughput) * blend), 0, 100)
+
+    ' Health slowly self-repairs while idle
+    healthGain = Cint(minutesAwayNum / 2.0)
+    m.top.networkHealth = clamp(m.top.networkHealth + healthGain, 0, 100)
 
     if elapsedSeconds > 30
-        minutesAway = (elapsedSeconds / 60.0).toStr()
-        addLog("Resuming after " + minutesAway + " min offline. Systems adjusted.")
-        print "[offline] " + minutesAway + " minutes away, resources adjusted"
+        minutesAway = minutesAwayNum.toStr()
+        addLog("Resuming after " + minutesAway + " min offline. Earned " + deltaCredits.toStr() + " credits.")
+        print "[offline] " + minutesAway + " minutes away, +" + deltaCredits.toStr() + " credits"
     end if
     flushSave()
 end sub
@@ -515,7 +573,14 @@ end sub
 
 sub onEventTimer()
     processRules()
-    if rnd(100) <= 35 then triggerRandomEvent()
+    ' Events are occasional flavour, not a constant beating.
+    ' Skip entirely while the relay is already struggling so the
+    ' player gets room to recover.
+    struggling = (m.top.power < 25 or m.top.heat > 80 or m.top.networkHealth < 40)
+    chance = m.tune.eventChance
+    if struggling then chance = m.tune.eventChanceStruggle
+    if rnd(100) <= chance then triggerRandomEvent()
+
     ' Notify visible tabs
     if m.tabs = invalid then return
     for each tabNode in m.tabs
@@ -534,57 +599,91 @@ sub startIncomeTimer()
 end sub
 
 sub onIncomeTick()
-    ' OPTIMIZATION: Pull all m.top values into local scope first.
-    ' Per Roku dev best practices, m scope access is slower than local.
-    ' This is our hottest code path (fires every 15s).
+    t = m.tune
+    ' Pull m.top values into locals (m scope access is slower).
     throughput = m.top.throughput
     upgradeLevel = m.top.upgradeLevel
     heat = m.top.heat
     power = m.top.power
     nodesUnlocked = m.top.nodesUnlocked
+    health = m.top.networkHealth
 
+    counts = m.top.upgradeCounts
+    if counts = invalid then counts = {}
+    coolingLvl = 0
+    reactorLvl = 0
+    batteryLvl = 0
+    bandwidthLvl = 0
+    armorLvl = 0
+    if counts.doesExist("cooling") then coolingLvl = counts["cooling"]
+    if counts.doesExist("reactor") then reactorLvl = counts["reactor"]
+    if counts.doesExist("battery") then batteryLvl = counts["battery"]
+    if counts.doesExist("bandwidth") then bandwidthLvl = counts["bandwidth"]
+    if counts.doesExist("armor") then armorLvl = counts["armor"]
+
+    ' ---- Income ----
     throughputMult = throughput / 50.0
     upgradeMult = 1.0 + (upgradeLevel * 0.25)
-    earned = Cint(5 * throughputMult * upgradeMult)
-    if earned < 3 then earned = 3
+    earned = Cint(t.incomeBase * throughputMult * upgradeMult)
+    if earned < t.incomeFloor then earned = t.incomeFloor
 
-    heatGain = Cint(2 + (throughput / 25.0))
-    powerLoss = Cint(2 + nodesUnlocked)
-
-    ' Apply passive upgrade effects: cooling reduces heat gain,
-    ' reactor shielding reduces power drain, battery adds regen.
-    counts = m.top.upgradeCounts
-    if counts <> invalid
-        if counts.doesExist("cooling")
-            heatGain = heatGain - counts["cooling"]
-            if heatGain < 0 then heatGain = 0
-        end if
-        if counts.doesExist("reactor")
-            powerLoss = powerLoss - counts["reactor"]
-            if powerLoss < 0 then powerLoss = 0
-        end if
-        if counts.doesExist("battery")
-            powerLoss = powerLoss - counts["battery"]
-        end if
+    ' ---- POWER: homeostasis toward a sustainable target ----
+    powerTarget = powerEquilibrium(reactorLvl, batteryLvl, nodesUnlocked)
+    if power < powerTarget
+        powerDelta = Cint((powerTarget - power) / 4.0) + 2
+    else
+        powerDelta = -1
     end if
 
-    healthDelta = 0
-    if heat > 85 then healthDelta = -3
-    if power < 10 then healthDelta = healthDelta - 2
+    ' ---- HEAT: passive dissipation vs throughput load ----
+    heatLoad = Cint(throughput / 20.0) + Cint(nodesUnlocked / 2)
+    heatDissipation = t.heatDissipation + (coolingLvl * t.heatCoolPerLevel)
+    heatDelta = heatLoad - heatDissipation
+    if heat > t.heatPanicThreshold then heatDelta = heatDelta - t.heatPanicBonus
 
-    ' Recovery floor: a fully drained/overheated relay slowly self-recovers
-    ' so the game can never become permanently unplayable.
-    if power <= 0
-        powerLoss = -8
-        heatGain = -6
+    ' ---- THROUGHPUT: recovers toward a baseline after events ----
+    throughputTarget = throughputEquilibrium(bandwidthLvl)
+    if throughput < throughputTarget
+        throughputDelta = Cint((throughputTarget - throughput) / 5.0) + 1
+    else
+        throughputDelta = 0
     end if
-    if heat >= 100 then heatGain = -10
+    if power < t.throughputStarve then throughputDelta = throughputDelta - t.throughputPenalty
 
-    applyResourceChanges(-powerLoss, heatGain, 0, earned, healthDelta)
+    ' ---- HEALTH: slow self-repair, damage only at true extremes ----
+    healthDelta = t.healthRegen + Cint(armorLvl / t.healthPerArmor)
+    if heat > t.healthHeatDamage then healthDelta = -2
+    if power < t.healthPowerDamage then healthDelta = healthDelta - 1
+    if health >= 100 then healthDelta = 0
+
+    applyResourceChanges(powerDelta, heatDelta, throughputDelta, earned, healthDelta)
 
     ' Refresh whichever tab is currently visible so live values update
     refreshActiveTab()
 end sub
+
+' ---- Equilibrium helpers (shared by live ticks and offline sim) ----
+function powerEquilibrium(reactorLvl, batteryLvl, nodesUnlocked) as integer
+    t = m.tune
+    v = t.powerBase + (reactorLvl * t.powerPerReactor) + (batteryLvl * t.powerPerBattery) - (nodesUnlocked * t.powerPerNode)
+    if v < t.powerMin then v = t.powerMin
+    if v > 100 then v = 100
+    return v
+end function
+
+function heatEquilibrium(coolingLvl) as integer
+    t = m.tune
+    v = t.heatBase - (coolingLvl * t.heatPerCooling)
+    if v < t.heatMin then v = t.heatMin
+    return v
+end function
+
+function throughputEquilibrium(bandwidthLvl) as integer
+    t = m.tune
+    v = t.throughputBase + (bandwidthLvl * t.throughputPerBand)
+    if v > 100 then v = 100
+    return v
+end function
 
 ' Refresh the currently visible tab plus the footer ticker
 sub refreshActiveTab()
@@ -602,47 +701,63 @@ sub refreshActiveTab()
 end sub
 
 ' ----- Random Events (12 types) -----
+' Tuned so positives outnumber negatives and negatives sting without
+' triggering a death spiral. Armor upgrades further blunt the damage.
 sub triggerRandomEvent()
     eventType = rnd(12)
     msg = ""
     deltaP = 0 : deltaH = 0 : deltaT = 0 : deltaC = 0 : deltaHp = 0
 
     if eventType = 1
-        msg = "!! INTRUSION DETECTED - Unauthorized access. Throughput -15, Credits -10."
-        deltaT = -15 : deltaC = -10 : deltaHp = -5
+        msg = "!! INTRUSION DETECTED - Unauthorized access. Throughput -8, Credits -5."
+        deltaT = -8 : deltaC = -5 : deltaHp = -2
     else if eventType = 2
-        msg = ">> THERMAL SPIKE - Cooling failure. Heat +20, Power -10."
-        deltaH = 20 : deltaP = -10
+        msg = ">> THERMAL SPIKE - Cooling strained. Heat +10, Power -4."
+        deltaH = 10 : deltaP = -4
     else if eventType = 3
-        msg = ">> PACKET STORM - Data surge. Throughput +25, Heat +15."
-        deltaT = 25 : deltaH = 15
+        msg = ">> PACKET STORM - Data surge. Throughput +25, Heat +8."
+        deltaT = 25 : deltaH = 8
     else if eventType = 4
-        msg = "** EFFICIENCY BOOST - Optimized routing. Credits +30."
-        deltaC = 30
+        msg = "** EFFICIENCY BOOST - Optimized routing. Credits +40."
+        deltaC = 40
     else if eventType = 5
-        msg = "~~ GHOST SIGNAL - Unknown node whispering. Heat -10, Credits +5."
-        deltaH = -10 : deltaC = 5
+        msg = "~~ GHOST SIGNAL - Unknown node whispering. Heat -10, Credits +15."
+        deltaH = -10 : deltaC = 15
     else if eventType = 6
-        msg = "** POWER SURGE - Grid feedback. Power +25, Heat +10."
-        deltaP = 25 : deltaH = 10
+        msg = "** POWER SURGE - Grid feedback. Power +25, Heat +6."
+        deltaP = 25 : deltaH = 6
     else if eventType = 7
-        msg = "!! DATA CORRUPTION - Memory damaged. Throughput -20, Health -10."
-        deltaT = -20 : deltaHp = -10
+        msg = "!! DATA CORRUPTION - Memory damaged. Throughput -10, Health -4."
+        deltaT = -10 : deltaHp = -4
     else if eventType = 8
         msg = "++ FIRMWARE UPDATE - Patch applied. Health +15, Throughput +5."
         deltaHp = 15 : deltaT = 5
     else if eventType = 9
-        msg = "!! SOLAR FLARE - EM interference. All systems disrupted."
-        deltaP = -15 : deltaH = 25 : deltaT = -10 : deltaHp = -8
+        msg = "!! SOLAR FLARE - EM interference. Systems disrupted."
+        deltaP = -6 : deltaH = 12 : deltaT = -5 : deltaHp = -3
     else if eventType = 10
-        msg = "$$ CONTRACT FULFILLED - Payment received. Credits +50."
-        deltaC = 50
+        msg = "$$ CONTRACT FULFILLED - Payment received. Credits +70."
+        deltaC = 70
     else if eventType = 11
         msg = "++ COOLING CACHE - Coolant reserves found. Heat -25."
         deltaH = -25
     else
-        msg = "~~ SYSTEM GLITCH - Minor anomaly. Power +5, Heat -5."
-        deltaP = 5 : deltaH = -5
+        msg = "~~ SYSTEM GLITCH - Minor anomaly. Power +8, Heat -5."
+        deltaP = 8 : deltaH = -5
+    end if
+
+    ' Network Hardening blunts incoming damage
+    counts = m.top.upgradeCounts
+    if counts <> invalid and counts.doesExist("armor")
+        armorLvl = counts["armor"]
+        if deltaHp < 0
+            deltaHp = deltaHp + armorLvl
+            if deltaHp > 0 then deltaHp = 0
+        end if
+        if deltaT < 0
+            deltaT = deltaT + armorLvl
+            if deltaT > 0 then deltaT = 0
+        end if
     end if
 
     print "[event] " + msg

@@ -72,7 +72,7 @@
         <Label id="warningTitle" text="[ ALERTS ]"
                translation="[80, 405]" font="font:MediumSystemFont" color="#FFAA44FF" />
         <Label id="warningText" text="All systems nominal."
-               translation="[80, 435]" font="font:SystemFont" color="#88FF88FF"
+               translation="[80, 435]" font="font:SmallSystemFont" color="#88FF88FF"
                wrap="true" width="1100" height="200" />
 
         <!-- Stats Panel (right side) -->
@@ -80,7 +80,7 @@
         <Label id="statsTitle" text="[ STATISTICS ]"
                translation="[840, 270]" font="font:MediumSystemFont" color="#00FF41FF" />
         <Label id="statsText" text="Rules: 0 | Logs: 0"
-               translation="[840, 305]" font="font:SystemFont" color="#88CC88FF"
+               translation="[840, 305]" font="font:SmallSystemFont" color="#88CC88FF"
                wrap="true" width="360" height="60" />
     </children>
     <script type="text/brightscript" uri="pkg:/components/MonitorTab.brs" />
