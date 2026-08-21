@@ -123,6 +123,11 @@ reboot the device to clear it.
 
 ## Device verification of the release artifact
 
+Compatibility claims for releases are bounded by `docs/COMPATIBILITY.md`: only
+the device/OS combinations listed in its tested matrix are supported, and
+release notes must reference that minimum supported target rather than making
+broader compatibility statements.
+
 The exact artifact produced by `build_package.py` was installed on hardware,
 not a separately-built zip:
 

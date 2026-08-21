@@ -110,6 +110,14 @@ each side proves:
 Device verification for each issue is recorded in its GitHub thread, with
 telnet output (`telnet <roku-ip> 8085`) as the evidence.
 
+## Supported hardware and OS
+
+RELAY-0's supported envelope is defined by evidence, not assumption. See
+[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the minimum supported
+hardware/OS target, the tested compatibility matrix, and every environment
+that is untested or unsupported. Compatibility is claimed only where it has
+been measured on hardware.
+
 CI additionally verifies that a sideload zip can be assembled, that every
 component has both a `.brs` and an `.xml`, and uploads the package as a
 build artifact.
