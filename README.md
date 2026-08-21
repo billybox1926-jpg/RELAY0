@@ -118,6 +118,10 @@ hardware/OS target, the tested compatibility matrix, and every environment
 that is untested or unsupported. Compatibility is claimed only where it has
 been measured on hardware.
 
+Long-session stability (soak testing) is covered separately in
+[`docs/LONG_SESSION.md`](docs/LONG_SESSION.md), with its repeatable
+procedure, pass/fail gates, and recorded run results.
+
 CI additionally verifies that a sideload zip can be assembled, that every
 component has both a `.brs` and an `.xml`, and uploads the package as a
 build artifact.
