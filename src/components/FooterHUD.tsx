@@ -1,12 +1,16 @@
 import React from 'react';
 import { GameState } from '../types';
+import { isSignalMultiplierActive, getSignalMultiplier, formatTimeRemaining } from '../game/dailySignal';
 
 interface FooterHUDProps {
   state: GameState;
 }
 
 export const FooterHUD: React.FC<FooterHUDProps> = ({ state }) => {
-  const { credits, power, heat, throughput, nodesUnlocked, networkHealth, upgradeLevel } = state;
+  const { credits, power, heat, throughput, nodesUnlocked, networkHealth, upgradeLevel, dailySignal } = state;
+  const boostActive = isSignalMultiplierActive(dailySignal);
+  const multiplier = getSignalMultiplier(dailySignal);
+  const boostRemaining = dailySignal?.rewardExpiresAt ? Math.max(0, dailySignal.rewardExpiresAt - Date.now()) : 0;
 
   let warning = '';
   if (heat > 80) warning += ' [!OVERHEAT!]';
@@ -38,6 +42,12 @@ export const FooterHUD: React.FC<FooterHUDProps> = ({ state }) => {
           <span>Health: <span className="text-white">{networkHealth}%</span></span>
           <span className="text-[#445544]">|</span>
           <span>Lvl: <span className="text-white">{upgradeLevel}</span></span>
+          {boostActive && (
+            <>
+              <span className="text-[#445544]">|</span>
+              <span className="text-[#00ff41] animate-pulse">⚡ Boost: {multiplier}x [{formatTimeRemaining(boostRemaining)}]</span>
+            </>
+          )}
           {warning && <span className="font-extrabold underline">{warning}</span>}
         </div>
 

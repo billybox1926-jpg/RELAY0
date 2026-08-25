@@ -14,6 +14,7 @@ import {
   ACTION_OPTIONS,
   RANDOM_EVENTS,
 } from './constants';
+import { getSignalMultiplier, generateDailySignal } from './dailySignal';
 
 export const DEFAULT_STATE: GameState = {
   credits: 100,
@@ -29,6 +30,7 @@ export const DEFAULT_STATE: GameState = {
   creditRemainder: 0.0,
   lastSaveTime: Math.floor(Date.now() / 1000),
   saveVersion: SAVE_SCHEMA_VERSION,
+  dailySignal: undefined,
 };
 
 export function clamp(val: number, lo: number, hi: number): number {
@@ -84,7 +86,8 @@ export function calculateUpgradeCost(key: string, currentLevel: number): number 
 export function calculateIncomeRate(state: GameState): number {
   const throughputMult = state.throughput / 50.0;
   const upgradeMult = 1.0 + state.upgradeLevel * 0.25;
-  const rawRate = 10 * throughputMult * upgradeMult;
+  const signalMult = getSignalMultiplier(state.dailySignal);
+  const rawRate = 10 * throughputMult * upgradeMult * signalMult;
   return Math.max(1, Math.round(rawRate));
 }
 
@@ -96,14 +99,26 @@ export function loadGameFromStorage(): { state: GameState; offlineResult: Offlin
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       const initLog = `${formatTimestamp()}: RELAY-0 terminal initialized. System online.`;
+      const initialSignal = generateDailySignal();
       return {
-        state: { ...DEFAULT_STATE, logEntries: [initLog] },
+        state: { ...DEFAULT_STATE, logEntries: [initLog], dailySignal: initialSignal },
         offlineResult: null,
       };
     }
 
     const parsed = JSON.parse(raw);
     const storedVer = typeof parsed.saveVersion === 'number' ? parsed.saveVersion : 1;
+
+    let restoredSignal = parsed.dailySignal;
+    const nowMs = Date.now();
+    if (!restoredSignal || typeof restoredSignal !== 'object' || (restoredSignal.expiresAt && nowMs >= restoredSignal.expiresAt)) {
+      // Check if previous multiplier is still active
+      const prevMultiplierExpiry = restoredSignal?.rewardExpiresAt;
+      restoredSignal = generateDailySignal(nowMs);
+      if (prevMultiplierExpiry && nowMs < prevMultiplierExpiry) {
+        restoredSignal.rewardExpiresAt = prevMultiplierExpiry;
+      }
+    }
 
     const candidate: GameState = {
       credits: typeof parsed.credits === 'number' ? clamp(parsed.credits, 0, 2000000000) : DEFAULT_STATE.credits,
@@ -119,6 +134,7 @@ export function loadGameFromStorage(): { state: GameState; offlineResult: Offlin
       creditRemainder: typeof parsed.creditRemainder === 'number' ? clamp(parsed.creditRemainder, 0, 1) : 0.0,
       lastSaveTime: typeof parsed.lastSaveTime === 'number' ? parsed.lastSaveTime : Math.floor(Date.now() / 1000),
       saveVersion: SAVE_SCHEMA_VERSION,
+      dailySignal: restoredSignal,
     };
 
     // Migrations
@@ -161,7 +177,7 @@ export function loadGameFromStorage(): { state: GameState; offlineResult: Offlin
     return { state: candidate, offlineResult: null };
   } catch (err) {
     console.error('[relay0] Failed to load save, resetting:', err);
-    return { state: { ...DEFAULT_STATE }, offlineResult: null };
+    return { state: { ...DEFAULT_STATE, dailySignal: generateDailySignal() }, offlineResult: null };
   }
 }
 
@@ -201,7 +217,8 @@ export function simulateOfflineProgression(
 
   const throughputMult = updated.throughput / 50.0;
   const upgradeMult = 1.0 + updated.upgradeLevel * 0.25;
-  let creditRate = TUNING.offlineRate * throughputMult * upgradeMult;
+  const signalMult = getSignalMultiplier(updated.dailySignal);
+  let creditRate = TUNING.offlineRate * throughputMult * upgradeMult * signalMult;
   if (creditRate < TUNING.offlineFloor) creditRate = TUNING.offlineFloor;
 
   const minutesAwayNum = elapsed / 60.0;
@@ -228,7 +245,8 @@ export function simulateOfflineProgression(
 
   if (elapsed > 30) {
     const minsFormatted = minutesAwayNum.toFixed(2);
-    const logMsg = `${formatTimestamp()}: Resuming after ${minsFormatted} min offline. Earned ${deltaCredits} credits.`;
+    const boostNote = signalMult > 1 ? ` (${signalMult}x SIGNAL BOOST)` : '';
+    const logMsg = `${formatTimestamp()}: Resuming after ${minsFormatted} min offline. Earned ${deltaCredits} credits${boostNote}.`;
     updated.logEntries = [logMsg, ...updated.logEntries].slice(0, MAX_LOGS);
   }
 
@@ -248,7 +266,8 @@ export function runIncomeTick(state: GameState): { state: GameState; earned: num
   // Income
   const throughputMult = updated.throughput / 50.0;
   const upgradeMult = 1.0 + updated.upgradeLevel * 0.25;
-  let earned = roundHalfUp(TUNING.incomeBase * throughputMult * upgradeMult);
+  const signalMult = getSignalMultiplier(updated.dailySignal);
+  let earned = roundHalfUp(TUNING.incomeBase * throughputMult * upgradeMult * signalMult);
   if (earned < TUNING.incomeFloor) earned = TUNING.incomeFloor;
 
   // Power

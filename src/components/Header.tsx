@@ -1,6 +1,8 @@
 import React from 'react';
-import { Volume2, VolumeX, Save, RotateCcw, Monitor, Terminal } from 'lucide-react';
+import { Volume2, VolumeX, Save, RotateCcw, Monitor, Terminal, Zap, Sparkles } from 'lucide-react';
 import { sound } from '../game/audio';
+import { DailySignalChallenge } from '../types';
+import { isSignalMultiplierActive, getSignalMultiplier, formatTimeRemaining } from '../game/dailySignal';
 
 interface HeaderProps {
   crtEnabled: boolean;
@@ -10,6 +12,7 @@ interface HeaderProps {
   onManualSave: () => void;
   onResetGame: () => void;
   saveFlash: boolean;
+  dailySignal?: DailySignalChallenge;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,7 +23,12 @@ export const Header: React.FC<HeaderProps> = ({
   onManualSave,
   onResetGame,
   saveFlash,
+  dailySignal,
 }) => {
+  const boostActive = isSignalMultiplierActive(dailySignal);
+  const multiplier = getSignalMultiplier(dailySignal);
+  const boostRemaining = dailySignal?.rewardExpiresAt ? Math.max(0, dailySignal.rewardExpiresAt - Date.now()) : 0;
+
   return (
     <header className="relative w-full border-b border-[#00ff4140] bg-[#091109] px-4 py-3 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -42,6 +50,19 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Center/Right: Active Signal Multiplier Badge (if engaged) */}
+        {boostActive && (
+          <div className="flex items-center gap-2 rounded border border-[#00ff41] bg-[#00ff4120] px-3 py-1.5 shadow-[0_0_12px_rgba(0,255,65,0.2)] animate-pulse">
+            <Zap className="h-4 w-4 fill-current text-[#00ff41]" />
+            <span className="text-xs font-mono font-bold text-white">
+              DAILY SIGNAL BOOST: {multiplier}x
+            </span>
+            <span className="text-[11px] font-mono text-[#88ff88] hidden sm:inline">
+              ({formatTimeRemaining(boostRemaining)})
+            </span>
+          </div>
+        )}
 
         {/* Right: Controls & Toggles */}
         <div className="flex items-center gap-2 text-xs">

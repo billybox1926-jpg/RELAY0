@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GameState, TabId, OfflineResumeResult, ToastNotification, ToastType } from './types';
+import { GameState, TabId, OfflineResumeResult, ToastNotification, ToastType, TelemetryPoint } from './types';
 import {
   DEFAULT_STATE,
   loadGameFromStorage,
@@ -12,6 +12,7 @@ import {
 } from './game/engine';
 import { MAX_RULES, MAX_NODES, MAX_LOGS, UPGRADE_CATALOG } from './game/constants';
 import { sound } from './game/audio';
+import { evaluateDailySignalProgress, generateDailySignal } from './game/dailySignal';
 import { Header } from './components/Header';
 import { TabBar } from './components/TabBar';
 import { MonitorTab } from './components/MonitorTab';
@@ -23,6 +24,7 @@ import { FooterHUD } from './components/FooterHUD';
 import { OfflineResumeModal } from './components/OfflineResumeModal';
 import { CRTOverlay } from './components/CRTOverlay';
 import { ToastContainer } from './components/ToastContainer';
+import { MatrixRainBackground } from './components/MatrixRainBackground';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<GameState>(() => {
@@ -37,15 +39,43 @@ export const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<TabId>(0);
   const [crtEnabled, setCrtEnabled] = useState<boolean>(true);
-  const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(() => sound.enabled);
   const [saveFlash, setSaveFlash] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [telemetryHistory, setTelemetryHistory] = useState<TelemetryPoint[]>(() => {
+    const loaded = loadGameFromStorage();
+    const initP = loaded.state.power;
+    const initT = loaded.state.throughput;
+    const initH = loaded.state.heat;
+    const initEff = initT / Math.max(1, initP);
+    const now = Date.now();
+    return Array.from({ length: 15 }, (_, i) => ({
+      time: now - (15 - i) * 2000,
+      label: `-${(15 - i) * 2}s`,
+      throughput: initT,
+      power: initP,
+      heat: initH,
+      efficiency: initEff,
+    }));
+  });
 
   const [nextIncomeIn, setNextIncomeIn] = useState<number>(15);
   const [nextEventIn, setNextEventIn] = useState<number>(30);
 
+  // Idle Screensaver State (triggers after 30s of inactivity on Monitor Tab)
+  const [isIdleOnMonitor, setIsIdleOnMonitor] = useState<boolean>(false);
+  const [idleSeconds, setIdleSeconds] = useState<number>(0);
+  const lastActivityTimeRef = useRef<number>(Date.now());
+
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  useEffect(() => {
+    const unsub = sound.subscribe((cfg) => {
+      setAudioEnabled(cfg.masterEnabled);
+    });
+    return unsub;
+  }, []);
 
   const titleIntervalRef = useRef<number | null>(null);
   const lastWarningRef = useRef<{ power: number; heat: number; health: number }>({
@@ -148,6 +178,51 @@ export const App: React.FC = () => {
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // Idle Activity Tracking for Matrix Rain Screensaver (30s on Monitor Tab)
+  useEffect(() => {
+    const handleActivity = () => {
+      lastActivityTimeRef.current = Date.now();
+      setIsIdleOnMonitor((prev) => {
+        if (prev) {
+          sound.playKeyClick();
+        }
+        return false;
+      });
+      setIdleSeconds(0);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach((evt) => {
+      window.addEventListener(evt, handleActivity, { passive: true });
+    });
+
+    const interval = setInterval(() => {
+      if (activeTab === 0) {
+        const elapsedSec = Math.floor((Date.now() - lastActivityTimeRef.current) / 1000);
+        setIdleSeconds(elapsedSec);
+        if (elapsedSec >= 30) {
+          setIsIdleOnMonitor(true);
+        }
+      } else {
+        setIsIdleOnMonitor(false);
+        lastActivityTimeRef.current = Date.now();
+        setIdleSeconds(0);
+      }
+    }, 1000);
+
+    return () => {
+      events.forEach((evt) => {
+        window.removeEventListener(evt, handleActivity);
+      });
+      clearInterval(interval);
+    };
+  }, [activeTab]);
+
+  const handleTriggerMatrixRain = useCallback(() => {
+    setIsIdleOnMonitor(true);
+    sound.playInfoChirp();
   }, []);
 
   // Event Tick Processing with Toast alerts
@@ -263,15 +338,54 @@ export const App: React.FC = () => {
     }
   }, [state.power, state.heat, state.networkHealth, addToast]);
 
-  // Income Timer (15s) and Event Timer (30s)
+  // Income Timer (15s), Event Timer (30s), and Telemetry Sampling (every 1s)
   useEffect(() => {
     const interval = setInterval(() => {
+      // Sample telemetry point for System Efficiency sparkline
+      const curr = stateRef.current;
+      const now = Date.now();
+      const eff = curr.throughput / Math.max(1, curr.power);
+      const timeStr = new Date(now).toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+
+      setTelemetryHistory((prev) => {
+        const newPoint: TelemetryPoint = {
+          time: now,
+          label: timeStr,
+          throughput: curr.throughput,
+          power: curr.power,
+          heat: curr.heat,
+          efficiency: eff,
+        };
+        return [...prev.slice(Math.max(0, prev.length - 24)), newPoint];
+      });
+
       setNextIncomeIn((prev) => {
         if (prev <= 1) {
           // Trigger Income Tick
           setState((curr) => {
             const res = runIncomeTick(curr);
-            return res.state;
+            const evaluated = evaluateDailySignalProgress(res.state, {
+              type: 'income_tick',
+              creditsEarned: res.earned,
+            });
+            if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+              sound.playSuccess();
+              const sig = evaluated.state.dailySignal;
+              addToast({
+                title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+                message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+                type: 'success',
+                duration: 8000,
+                actionLabel: 'VIEW STATUS',
+                onAction: () => setActiveTab(0),
+              });
+            }
+            return evaluated.state;
           });
           return 15;
         }
@@ -296,7 +410,23 @@ export const App: React.FC = () => {
     sound.playSuccess();
     setState((curr) => {
       const res = runIncomeTick(curr);
-      return res.state;
+      const evaluated = evaluateDailySignalProgress(res.state, {
+        type: 'income_tick',
+        creditsEarned: res.earned,
+      });
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
     setNextIncomeIn(15);
   }, []);
@@ -305,6 +435,23 @@ export const App: React.FC = () => {
     processEventTick(true);
     setNextEventIn(30);
   }, [processEventTick]);
+
+  // Daily Signal Retune Handler
+  const handleRetuneDailySignal = useCallback(() => {
+    const newSignal = generateDailySignal();
+    const log = `${formatTimestamp()}: Frequency retuned. Intercepted new carrier [${newSignal.callsign}] at ${newSignal.frequency}.`;
+    setState((curr) => ({
+      ...curr,
+      dailySignal: newSignal,
+      logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+    }));
+    addToast({
+      title: 'FREQUENCY RETUNED',
+      message: `Carrier ${newSignal.callsign} [${newSignal.frequency}] intercepted: ${newSignal.title}`,
+      type: 'info',
+      duration: 5000,
+    });
+  }, []);
 
   // Keyboard navigation & Shortcuts
   useEffect(() => {
@@ -394,11 +541,27 @@ export const App: React.FC = () => {
       if (curr.rules.length >= MAX_RULES) return curr;
       const newRules = [...curr.rules, { condition, action }];
       const log = `${formatTimestamp()}: Added automation rule: IF ${condition} THEN ${action}`;
-      return {
-        ...curr,
-        rules: newRules,
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          rules: newRules,
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'rule_change' }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
   };
 
@@ -424,13 +587,29 @@ export const App: React.FC = () => {
     }
     setState((curr) => {
       const log = `${formatTimestamp()}: Node overclocked. Throughput +10, Heat +15.`;
-      return {
-        ...curr,
-        credits: curr.credits - 30,
-        throughput: clamp(curr.throughput + 10, 0, 100),
-        heat: clamp(curr.heat + 15, 0, 100),
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          credits: curr.credits - 30,
+          throughput: clamp(curr.throughput + 10, 0, 100),
+          heat: clamp(curr.heat + 15, 0, 100),
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'node_action', actionKey: 'overclock' }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
     return { success: true, message: 'Node Overclock executed! (+10 Throughput, +15 Heat)' };
   };
@@ -441,12 +620,28 @@ export const App: React.FC = () => {
     }
     setState((curr) => {
       const log = `${formatTimestamp()}: Thermal repair completed. Heat normalized to 30.`;
-      return {
-        ...curr,
-        credits: curr.credits - 20,
-        heat: 30,
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          credits: curr.credits - 20,
+          heat: 30,
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'node_action', actionKey: 'repair' }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
     return { success: true, message: 'Thermal repair completed. Heat reset to 30.' };
   };
@@ -461,12 +656,28 @@ export const App: React.FC = () => {
     setState((curr) => {
       const nextNode = curr.nodesUnlocked + 1;
       const log = `${formatTimestamp()}: Expansion complete. Node ${curr.nodesUnlocked} activated. Total nodes: ${nextNode}.`;
-      return {
-        ...curr,
-        credits: curr.credits - 500,
-        nodesUnlocked: nextNode,
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          credits: curr.credits - 500,
+          nodesUnlocked: nextNode,
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'node_action', actionKey: 'expand' }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
     return { success: true, message: `Node Expansion successful! Unlocked Node ${state.nodesUnlocked}.` };
   };
@@ -478,12 +689,28 @@ export const App: React.FC = () => {
     setState((curr) => {
       const nextLvl = curr.upgradeLevel + 1;
       const log = `${formatTimestamp()}: System upgrade installed. Level ${nextLvl} active (+25% income multiplier).`;
-      return {
-        ...curr,
-        credits: curr.credits - 200,
-        upgradeLevel: nextLvl,
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          credits: curr.credits - 200,
+          upgradeLevel: nextLvl,
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'node_action', actionKey: 'upgrade_level' }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
     return { success: true, message: `Upgraded to Level ${state.upgradeLevel + 1}! (+25% Income Yield)` };
   };
@@ -494,12 +721,28 @@ export const App: React.FC = () => {
     }
     setState((curr) => {
       const log = `${formatTimestamp()}: Network integrity restored (+30% health).`;
-      return {
-        ...curr,
-        credits: curr.credits - 150,
-        networkHealth: clamp(curr.networkHealth + 30, 0, 100),
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          credits: curr.credits - 150,
+          networkHealth: clamp(curr.networkHealth + 30, 0, 100),
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'node_action', actionKey: 'restore_health' }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
     return { success: true, message: 'Network Health restored +30%!' };
   };
@@ -540,16 +783,32 @@ export const App: React.FC = () => {
 
       const log = `${formatTimestamp()}: Purchased ${item.name} (Lvl ${currentCount + 1}) for ${cost} CR.`;
 
-      return {
-        ...curr,
-        credits: nextCredits,
-        upgradeCounts: nextCounts,
-        upgradeLevel: nextLvl,
-        power: nextPower,
-        throughput: nextThroughput,
-        networkHealth: nextHealth,
-        logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
-      };
+      const evaluated = evaluateDailySignalProgress(
+        {
+          ...curr,
+          credits: nextCredits,
+          upgradeCounts: nextCounts,
+          upgradeLevel: nextLvl,
+          power: nextPower,
+          throughput: nextThroughput,
+          networkHealth: nextHealth,
+          logEntries: [log, ...curr.logEntries].slice(0, MAX_LOGS),
+        },
+        { type: 'purchase_upgrade', upgradeKey: key }
+      );
+      if (!curr.dailySignal?.completed && evaluated.state.dailySignal?.completed) {
+        sound.playSuccess();
+        const sig = evaluated.state.dailySignal;
+        addToast({
+          title: 'MISSION COMPLETE: DAILY SIGNAL DECODED!',
+          message: `Carrier ${sig.callsign} locked! +${sig.creditBonus} CR awarded & ${sig.rewardMultiplier}x Credit Multiplier active for ${(sig.rewardDurationSeconds / 3600).toFixed(0)} hours!`,
+          type: 'success',
+          duration: 8000,
+          actionLabel: 'VIEW STATUS',
+          onAction: () => setActiveTab(0),
+        });
+      }
+      return evaluated.state;
     });
 
     return { success: true, message: `Purchased ${item.name} Level ${currentCount + 1}!` };
@@ -566,6 +825,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative min-h-screen bg-[#070b07] text-[#88ff88] flex flex-col justify-between selection:bg-[#00ff41] selection:text-black">
+      {/* Matrix Scrolling Character Screensaver Overlay (activates when idle > 30s on Monitor tab) */}
+      <MatrixRainBackground active={isIdleOnMonitor} />
+
       {/* CRT Scanline & Vignette Effect */}
       <CRTOverlay enabled={crtEnabled} />
 
@@ -588,6 +850,7 @@ export const App: React.FC = () => {
           onManualSave={handleManualSave}
           onResetGame={handleResetGame}
           saveFlash={saveFlash}
+          dailySignal={state.dailySignal}
         />
 
         {/* Tab Navigation */}
@@ -603,10 +866,15 @@ export const App: React.FC = () => {
           {activeTab === 0 && (
             <MonitorTab
               state={state}
+              telemetry={telemetryHistory}
               onManualIncomeTick={handleManualIncomeTick}
               onManualEventTick={handleManualEventTick}
+              onRetuneSignal={handleRetuneDailySignal}
               nextIncomeIn={nextIncomeIn}
               nextEventIn={nextEventIn}
+              idleSeconds={idleSeconds}
+              isIdleOnMonitor={isIdleOnMonitor}
+              onTriggerMatrixRain={handleTriggerMatrixRain}
             />
           )}
 

@@ -1,27 +1,44 @@
 import React from 'react';
-import { GameState } from '../types';
+import { GameState, TelemetryPoint } from '../types';
 import { calculateIncomeRate, powerEquilibrium, heatEquilibrium, throughputEquilibrium } from '../game/engine';
-import { Zap, Flame, Radio, Shield, Coins, AlertTriangle, CheckCircle2, TrendingUp } from 'lucide-react';
+import { getSignalMultiplier, isSignalMultiplierActive } from '../game/dailySignal';
+import { Zap, Flame, Radio, Shield, Coins, AlertTriangle, CheckCircle2, TrendingUp, Sparkles, Terminal, Play } from 'lucide-react';
+import { DailySignalCard } from './DailySignalCard';
+import { SystemEfficiencyCard } from './SystemEfficiencyCard';
+import { HeatDistributionCard } from './HeatDistributionCard';
+import { AudioSettingsCard } from './AudioSettingsCard';
 
 interface MonitorTabProps {
   state: GameState;
+  telemetry?: TelemetryPoint[];
   onManualIncomeTick: () => void;
   onManualEventTick: () => void;
+  onRetuneSignal?: () => void;
   nextIncomeIn: number;
   nextEventIn: number;
+  idleSeconds?: number;
+  isIdleOnMonitor?: boolean;
+  onTriggerMatrixRain?: () => void;
 }
 
 export const MonitorTab: React.FC<MonitorTabProps> = ({
   state,
+  telemetry = [],
   onManualIncomeTick,
   onManualEventTick,
+  onRetuneSignal,
   nextIncomeIn,
   nextEventIn,
+  idleSeconds = 0,
+  isIdleOnMonitor = false,
+  onTriggerMatrixRain,
 }) => {
   const { power, heat, throughput, networkHealth, credits, upgradeLevel, nodesUnlocked, upgradeCounts } = state;
 
   const incomeRate = calculateIncomeRate(state);
   const upgradeMult = 1.0 + upgradeLevel * 0.25;
+  const isBoostActive = isSignalMultiplierActive(state.dailySignal);
+  const signalMult = getSignalMultiplier(state.dailySignal);
 
   const counts = upgradeCounts || {};
   const reactorLvl = counts['reactor'] || 0;
@@ -110,13 +127,21 @@ export const MonitorTab: React.FC<MonitorTabProps> = ({
         </div>
 
         {/* Income Rate Card */}
-        <div className="terminal-box rounded-lg p-4">
+        <div className={`terminal-box rounded-lg p-4 transition-all ${isBoostActive ? 'border-[#00ff41] bg-[#00ff4110]' : ''}`}>
           <div className="flex items-center justify-between text-xs text-[#00aa30]">
             <span className="font-bold tracking-wider">PROJECTED INCOME</span>
             <TrendingUp className="h-4 w-4 text-[#00ff41]" />
           </div>
-          <div className="mt-2 text-2xl sm:text-3xl font-bold text-[#00ff41] text-glow">
-            ~{incomeRate} <span className="text-xs text-[#44aa44]">CR / MIN</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <div className="text-2xl sm:text-3xl font-bold text-[#00ff41] text-glow">
+              ~{incomeRate} <span className="text-xs text-[#44aa44]">CR / MIN</span>
+            </div>
+            {isBoostActive && (
+              <span className="flex items-center gap-0.5 rounded border border-[#00ff41] bg-[#00ff4125] px-1.5 py-0.5 text-[10px] font-mono font-bold text-[#00ff41] animate-pulse">
+                <Sparkles className="h-3 w-3" />
+                {signalMult}x BOOST
+              </span>
+            )}
           </div>
           <div className="mt-1 text-[11px] text-[#88aa88]">
             Next tick in <span className="text-white font-bold">{nextIncomeIn}s</span> (15s cycle)
@@ -130,9 +155,11 @@ export const MonitorTab: React.FC<MonitorTabProps> = ({
             <Zap className="h-4 w-4 text-[#44aaff]" />
           </div>
           <div className="mt-2 text-2xl sm:text-3xl font-bold text-[#44aaff] text-glow-blue">
-            Lvl {upgradeLevel} <span className="text-xs text-[#3377aa]">(&times;{upgradeMult.toFixed(2)})</span>
+            Lvl {upgradeLevel} <span className="text-xs text-[#3377aa]">(&times;{(upgradeMult * (isBoostActive ? signalMult : 1)).toFixed(2)})</span>
           </div>
-          <div className="mt-1 text-[11px] text-[#88aa88]">+25% income yield per level</div>
+          <div className="mt-1 text-[11px] text-[#88aa88]">
+            {isBoostActive ? `Base &times;${upgradeMult.toFixed(2)} &bull; Signal &times;${signalMult}` : '+25% income yield per level'}
+          </div>
         </div>
 
         {/* Relay Node Count */}
@@ -149,6 +176,21 @@ export const MonitorTab: React.FC<MonitorTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Daily Signal Transmission Challenge */}
+      <DailySignalCard
+        state={state}
+        onRetuneSignal={onRetuneSignal}
+      />
+
+      {/* System Efficiency Dashboard: Throughput vs Power Over Time */}
+      <SystemEfficiencyCard
+        telemetry={telemetry}
+        currentPower={power}
+        currentThroughput={throughput}
+        currentHeat={heat}
+        nodeCount={nodesUnlocked}
+      />
 
       {/* Main Telemetry Grid: 4 Core Resource Gauges */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -258,6 +300,9 @@ export const MonitorTab: React.FC<MonitorTabProps> = ({
         </div>
       </div>
 
+      {/* Heat Distribution // Thermal Concentration Matrix */}
+      <HeatDistributionCard state={state} />
+
       {/* Warnings & Diagnostic Panel */}
       <div
         className={`terminal-box rounded-lg p-4 transition-all ${
@@ -322,6 +367,9 @@ export const MonitorTab: React.FC<MonitorTabProps> = ({
         </div>
       </div>
 
+      {/* Audio Controller Sub-section: Multi-channel Alarms, UI & Ambient Static */}
+      <AudioSettingsCard />
+
       {/* Manual Simulation Controls */}
       <div className="terminal-box rounded-lg p-4">
         <div className="flex items-center justify-between border-b border-[#00ff4120] pb-2">
@@ -349,6 +397,30 @@ export const MonitorTab: React.FC<MonitorTabProps> = ({
             <Radio className="h-4 w-4" />
             <span>TRIGGER RANDOM EVENT ROLL</span>
           </button>
+
+          {onTriggerMatrixRain && (
+            <button
+              id="test-matrix-rain-btn"
+              onClick={onTriggerMatrixRain}
+              title="Force trigger Matrix Rain scrolling character effect (auto-triggers after 30s idle)"
+              className="flex items-center gap-2 rounded border border-[#38bdf860] bg-[#38bdf815] px-3 py-2 text-xs font-bold text-[#38bdf8] hover:bg-[#38bdf830] transition-all"
+            >
+              <Terminal className="h-4 w-4" />
+              <span>TEST MATRIX RAIN EFFECT</span>
+            </button>
+          )}
+
+          {/* Idle Monitor Indicator */}
+          <div className="flex items-center gap-2 rounded border border-[#00ff4125] bg-[#050e05] px-3 py-2 text-xs font-mono text-[#88ff88]">
+            <span className="h-2 w-2 rounded-full bg-[#00ff41] animate-pulse" />
+            <span>
+              Idle Screensaver: {isIdleOnMonitor ? (
+                <span className="text-[#00ff41] font-bold">ACTIVE</span>
+              ) : (
+                <span>Auto-triggers in <strong className="text-white">{Math.max(0, 30 - idleSeconds)}s</strong> (30s threshold)</span>
+              )}
+            </span>
+          </div>
         </div>
       </div>
     </div>

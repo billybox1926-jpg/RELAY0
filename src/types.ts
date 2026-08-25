@@ -63,6 +63,38 @@ export interface NodeActionDef {
   unlockedOnly?: boolean;
 }
 
+export type DailyGoalType =
+  | 'sustain_throughput'
+  | 'thermal_stability'
+  | 'power_grid'
+  | 'credit_surge'
+  | 'network_fortification'
+  | 'automation_deploy'
+  | 'overclock_matrix'
+  | 'hardware_upgrade';
+
+export interface DailySignalChallenge {
+  id: string;
+  frequency: string;
+  callsign: string;
+  title: string;
+  description: string;
+  goalType: DailyGoalType;
+  targetValue: number;
+  currentValue: number;
+  unit: string;
+  completed: boolean;
+  completedAt?: number;
+  expiresAt: number; // Unix timestamp ms
+  createdAt: number; // Unix timestamp ms
+  rewardMultiplier: number; // e.g. 2.0 (for 2x income)
+  rewardDurationSeconds: number; // e.g. 7200 (2 hours)
+  rewardExpiresAt?: number; // Unix timestamp ms
+  creditBonus: number; // e.g. 300 CR
+  flavorText: string;
+  consecutiveTicksAtTarget?: number;
+}
+
 export interface GameState {
   credits: number;
   power: number;
@@ -77,6 +109,7 @@ export interface GameState {
   creditRemainder: number;
   lastSaveTime: number; // Unix timestamp in seconds
   saveVersion: number;
+  dailySignal?: DailySignalChallenge;
 }
 
 export interface OfflineResumeResult {
@@ -103,7 +136,29 @@ export interface RandomEventDef {
   deltaHp: number;
 }
 
+export interface TelemetryPoint {
+  time: number;
+  label: string;
+  throughput: number;
+  power: number;
+  heat: number;
+  efficiency: number;
+}
+
 export type ToastType = 'critical' | 'warning' | 'success' | 'info';
+
+export interface AudioCategorySettings {
+  enabled: boolean;
+  volume: number; // 0 to 100
+}
+
+export interface AudioConfig {
+  masterEnabled: boolean;
+  masterVolume: number; // 0 to 100
+  alarms: AudioCategorySettings; // System alarms (event alerts, critical sirens)
+  ui: AudioCategorySettings;     // UI notifications (button clicks, chirps, chimes)
+  ambient: AudioCategorySettings; // Ambient background static / CRT hum
+}
 
 export interface ToastNotification {
   id: string;
