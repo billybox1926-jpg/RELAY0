@@ -5,6 +5,21 @@ All notable changes to RELAY-0 will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.0 (2026-08-25)
+
+
+### Features
+
+* implement daily signal system ([c2e1dad](https://github.com/billybox1926-jpg/RELAY0/commit/c2e1dad99a8bcb525787cef2ccf73a594bc8edf4))
+* implement RELAY-0 network terminal core ([8f17348](https://github.com/billybox1926-jpg/RELAY0/commit/8f1734842324e7a164a5a206e1b7c793d41fa5be))
+
+
+### Bug Fixes
+
+* restore config/.env.example required by hygiene check ([b9219b7](https://github.com/billybox1926-jpg/RELAY0/commit/b9219b74a3f0a578e12dac621ec3797d24801a10))
+* restore config/.env.example required by hygiene check ([e78c98c](https://github.com/billybox1926-jpg/RELAY0/commit/e78c98cd14a8a2d3e7180ec541326347a75b629b))
+* restore config/.env.example required by hygiene check ([#17](https://github.com/billybox1926-jpg/RELAY0/issues/17)) ([b9219b7](https://github.com/billybox1926-jpg/RELAY0/commit/b9219b74a3f0a578e12dac621ec3797d24801a10))
+
 ## [0.1.0] — initial Roku channel prototype
 
 ### Added
