@@ -28,10 +28,12 @@ from pathlib import Path
 ECP_PORT = 8060
 DEBUG_PORT = 8085
 
-# Key names accepted by Roku ECP (keypress endpoint).
+# Key names accepted by Roku ECP (keypress endpoint). NOTE: some firmware
+# (onn. C302X, Roku OS 15.3.4) returns HTTP 400 for the "OK" alias; "Select"
+# is the canonical name for the same key.
 KEYS = [
-    "Up", "Down", "Left", "Right", "OK", "Back", "Home",
-    "Rev", "Fwd", "Select", "InstantReplay",
+    "Up", "Down", "Left", "Right", "Select", "Back", "Home",
+    "Rev", "Fwd", "InstantReplay",
 ]
 
 
