@@ -1,0 +1,8 @@
+{
+  "name": "RELAY-0 Network Terminal",
+  "description": "Network relay station idle and management simulation terminal with automation rule engine, node expansion, system monitoring, upgrade tech store, and offline progression.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

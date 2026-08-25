@@ -36,7 +36,7 @@ check_shell_syntax() {
   local script
   while IFS= read -r -d '' script; do
     bash -n "$script" || report_failure "shell syntax failed: $script"
-  done < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
+  done < <(find . -type f -name '*.sh' -not -path './.git/*' -not -path './node_modules/*' -not -path './dist/*' -print0)
 }
 
 check_merge_markers() {
@@ -103,7 +103,7 @@ check_markdown_headings() {
     if [[ "$first_line" != '#'* && "$first_line" != '---' ]]; then
       report_failure "markdown file should start with a heading or front matter: $file"
     fi
-  done < <(find . -type f -name '*.md' -not -path './.git/*' -print0)
+  done < <(find . -type f -name '*.md' -not -path './.git/*' -not -path './node_modules/*' -not -path './dist/*' -print0)
 }
 
 check_required_files
